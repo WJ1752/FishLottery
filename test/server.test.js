@@ -188,6 +188,49 @@ test('concurrent duplicate requestId only settles once per player', async () => 
   }
 })
 
+test('FX trade receipts report actual fills and survive a replay', async () => {
+  const app = await startServer()
+  try {
+    setClock(new Date().setHours(12, 0, 0, 0))
+    const cookie = await register(app.call, 'fx-receipts')
+    const boot = await app.call('/api/bootstrap', { cookie })
+    assert.equal(boot.status, 200)
+    unlockGuideFor(app.db, 1)
+    const row = get(app.db, 'SELECT state FROM players WHERE user_id = 1')
+    const state = JSON.parse(row.state)
+    run(app.db, 'UPDATE players SET state = ? WHERE user_id = 1', JSON.stringify({ ...state, coins: 100 }))
+    const requested = 20
+    const place = (action, requestId) => app.call('/api/action', {
+      method: 'POST', cookie,
+      body: { action, params: { name: 'swift', qty: requested }, requestId },
+    })
+
+    const buy = await place('fxBuy', 'buy-once')
+    assert.equal(buy.status, 200)
+    const { receipt } = buy.body
+    assert.ok(receipt.qty > 0 && receipt.qty < requested)
+    assert.equal(receipt.name, 'swift')
+    assert.equal(receipt.side, 'buy')
+    assert.equal(buy.body.me.fx.positions.swift, receipt.qty)
+    assert.equal(buy.body.me.coins, 100 - receipt.qty * receipt.price - receipt.fee)
+
+    const retry = await place('fxBuy', 'buy-once')
+    assert.equal(retry.status, 200)
+    assert.equal(retry.body.replayed, true)
+    assert.deepEqual(retry.body.receipt, receipt)
+
+    const sell = await place('fxSell', 'sell-once')
+    assert.equal(sell.status, 200)
+    assert.equal(sell.body.receipt.side, 'sell')
+    assert.equal(sell.body.receipt.qty, receipt.qty)
+    assert.equal(sell.body.me.fx.positions.swift, 0)
+    assert.equal(sell.body.me.coins, buy.body.me.coins + sell.body.receipt.qty * sell.body.receipt.price - sell.body.receipt.fee)
+  } finally {
+    resetClock()
+    await app.close()
+  }
+})
+
 test('admin endpoints require role and a 12h 2FA session', async () => {
   const app = await startServer()
   try {

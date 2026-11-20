@@ -318,7 +318,11 @@ const ACTIONS = {
 
 export const ACTION_NAMES = Object.keys(ACTIONS)
 
-function claimReceipt(name, state, next) {
+function actionReceipt(name, state, next) {
+  if (name === 'fxBuy' || name === 'fxSell') {
+    const { name: symbol, side, qty, price, fee } = next.fx.trades[0]
+    return { name: symbol, side, qty, price, fee }
+  }
   const lottery = name === 'claimTickets'
   if (!lottery && name !== 'claimScratch' && name !== 'claimAllScratch') return null
   const before = lottery ? state.tickets : state.scratchCards
@@ -336,7 +340,7 @@ function claimReceipt(name, state, next) {
   return { count: claimed.length, rewards: [...rewards.values()] }
 }
 
-// 执行一个动作，返回 { state, applied, flows }。
+// 执行一个动作，返回 { state, applied, flows, receipt }。
 // flows 是玩家动作引起的全服行情增量，由调用方合并进 fx_bucket。
 export function applyAction(name, state, params = {}, ctx = {}) {
   const handler = ACTIONS[name]
@@ -349,7 +353,7 @@ export function applyAction(name, state, params = {}, ctx = {}) {
   const at = ctx.at ?? now()
   const guided = advanceGuide(advanceDepthSurveys(next), at)
   const focused = syncGuideFocus(guided.state, at)
-  return { state: focused, applied: true, flows: diffFlows(before, focused.fx?.today || {}), receipt: claimReceipt(name, state, focused) }
+  return { state: focused, applied: true, flows: diffFlows(before, focused.fx?.today || {}), receipt: actionReceipt(name, state, focused) }
 }
 
 export { appendFlow, batchStart, batchEnd, registerBatch, cryptoRandom }

@@ -799,7 +799,7 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
   // 我的彩票：命中多的在前，命中相同则后下注的在前。
   const numberedTickets = sortNumberedTickets(state.tickets.filter((ticket) => ticket.numbers.length > 0))
   const pagedTickets = usePaged(numberedTickets, 6)
-  // 开奖面板只展示当前选中奖池的往期号码：最近五期，期号从第一期起算。
+  // 开奖面板显示当前选中奖池的往期号码，期数由后台配置。
   const history = lottery?.history?.[tierId] || []
   const issueLabel = lottery?.issue ? `第${lottery.issue}期` : '本期'
   // 合成一张该场彩票要消耗的空白票数（后台可配），玩家按「可合成张数」投入。
@@ -846,8 +846,14 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
         ? (history.length ? <div className="draw-board">{history.map((item) => <div className="draw-lane" key={item.batchId} style={{ '--lane-color': tier.accentColor }} title={new Date(item.startAt).toLocaleString('zh-CN')}><span>第{item.issue}期</span><div>{item.numbers.map((n) => <b key={n}>{n}</b>)}</div></div>)}</div> : <div className="draw-placeholder"><strong>暂无开奖记录</strong></div>)
         : <LotteryPoolPreview tier={tier} />}
     </section></div>
-    {report && <RewardReportModal title="彩票兑奖" rewards={report.rewards} extra={`${report.count} 张 · ${report.hits} 命中`} onClose={() => setReport(null)} />}
-    <div className="section-row"><div><h2>号码票</h2></div><div className="section-actions"><button className="secondary-button" disabled={busy || !claimable.length} onClick={claim}><Gift size={15} /> 一键兑奖 {claimable.length || ''}</button></div></div><div className="numbered-ticket-grid">{pagedTickets.slice.map((ticket) => <NumberedTicketCard key={ticket.id} ticket={ticket} config={config} />)}{!numberedTickets.length && <div className="panel numbered-empty"><EmptyState icon={Ticket} title="暂无号码票" /></div>}</div>
+    <div className="section-row"><div><h2>号码票</h2></div><div className="section-actions"><button className="secondary-button" disabled={busy || !claimable.length} onClick={claim}><Gift size={15} /> 一键兑奖 {claimable.length || ''}</button></div></div>
+    <div className="numbered-ticket-grid">
+      {pagedTickets.slice.map((ticket) => {
+        const currentIssue = ticket.batchId === lottery?.batchId
+        return <NumberedTicketCard key={ticket.id} ticket={ticket} pools={currentIssue ? lotteryTypes : config.lotteryTypes} currentIssue={currentIssue} />
+      })}
+      {!numberedTickets.length && <div className="panel numbered-empty"><EmptyState icon={Ticket} title="暂无号码票" /></div>}
+    </div>
     <Pager {...pagedTickets} />
     {report && <RewardReportModal title="彩票兑奖" extra={`已结算 ${report.count} 张彩票`} rewards={report.rewards} onClose={() => setReport(null)} />}
   </>
@@ -879,18 +885,31 @@ function LotteryPoolPreview({ tier }) {
 
 const formatChance = (percent) => {
   if (!Number.isFinite(percent)) return '—'
+  if (percent === 0) return '0%'
   if (percent >= 10) return `${percent.toFixed(1)}%`
   if (percent >= 0.01) return `${percent.toFixed(2)}%`
-  return `${percent.toFixed(4)}%`
+  return `${percent.toPrecision(3)}%`
 }
 
-function NumberedTicketCard({ ticket, config }) {
-  const type = lotteryTypeFor(config, ticket.tier)
-  const advanced = (config.lotteryTypes.findIndex((item) => item.id === type.id)) > 0
-  const status = ticket.status === 'DRAWN' ? '待兑奖' : '待开奖'
-  const statusTone = ticket.status === 'DRAWN' ? 'success' : 'live'
+function NumberedTicketCard({ ticket, pools, currentIssue }) {
+  const poolIndex = pools.findIndex((item) => item.id === ticket.tier)
+  const type = pools[poolIndex]
+  const drawn = ticket.status === 'DRAWN'
   const batchLabel = ticket.batchId ? new Date(ticket.batchId).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '本期'
-  return <article className={cn('numbered-ticket-card', advanced && 'advanced')} style={{ '--card-color': type.cardColor, '--ticket-accent': type.accentColor }}><div className="numbered-ticket-top"><div><ItemIllustration item="彩票" fallback={<Ticket size={20} />} /><strong>{type.name}</strong></div><StatusPill tone={statusTone}>{status}</StatusPill></div><div className="numbered-ticket-sub"><span>{batchLabel}</span><span>{type.min} — {type.max}</span></div><div className="numbered-ticket-numbers">{ticket.numbers.map((number) => <span key={number} className={ticket.drawnNumbers?.includes(number) ? 'number-hit' : ''}>{number}</span>)}</div>{ticket.status === 'DRAWN' ? <div className="numbered-ticket-result"><strong>{ticket.hits ?? 0}</strong><span>{ticket.rewards.map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、') || '安慰奖'}</span></div> : <div className="numbered-ticket-result pending"><span>待开奖</span></div>}<div className="numbered-ticket-foot"><span /></div></article>
+  const numberLabel = currentIssue && type ? `${type.min} — ${type.max}` : `${ticket.numbers.length} 个号码`
+  const rewards = (ticket.rewards || []).map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、')
+  return <article className={cn('numbered-ticket-card', poolIndex > 0 && 'advanced')} style={{ '--card-color': type?.cardColor, '--ticket-accent': type?.accentColor }}>
+    <div className="numbered-ticket-top">
+      <div><ItemIllustration item="彩票" fallback={<Ticket size={20} />} /><strong>{type?.name || '号码票'}</strong></div>
+      <StatusPill tone={drawn ? 'success' : 'live'}>{drawn ? '待兑奖' : '待开奖'}</StatusPill>
+    </div>
+    <div className="numbered-ticket-sub"><span>{batchLabel}</span><span>{numberLabel}</span></div>
+    <div className="numbered-ticket-numbers">{ticket.numbers.map((number) => <span key={number} className={ticket.drawnNumbers?.includes(number) ? 'number-hit' : ''}>{number}</span>)}</div>
+    {drawn
+      ? <div className="numbered-ticket-result"><strong>{ticket.hits ?? 0}</strong><span>{rewards || '无奖励'}</span></div>
+      : <div className="numbered-ticket-result pending"><span>待开奖</span></div>}
+    <div className="numbered-ticket-foot"><span /></div>
+  </article>
 }
 
 function FxSparkline({ points }) {
@@ -971,14 +990,23 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
   const unitPrice = quote ? (side === 'buy' ? quote.buy : quote.sell) : 0
   const gross = safeQty * unitPrice
   const fee = Math.ceil(gross * config.feeRate)
-  const affordable = side === 'buy' ? Math.floor(coins / (unitPrice * (1 + config.feeRate) || 1)) : held
+  const affordable = side === 'buy'
+    ? Math.max(0, Math.min(config.maxPosition - held, Math.floor(coins / (unitPrice * (1 + config.feeRate) || 1))))
+    : held
   const overCap = side === 'buy' && held + safeQty > config.maxPosition
   const canTrade = session.open && Boolean(quote) && safeQty > 0 && !overCap && (side === 'buy' ? gross + fee <= coins : safeQty <= held)
   const clock = (at) => new Date(at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   const submit = async () => {
     if (!canTrade || busy) return
-    const label = side === 'buy' ? `买入 ${quote.label} ×${safeQty}` : `卖出 ${quote.label} ×${safeQty}`
-    if (await onAction(side === 'buy' ? 'fxBuy' : 'fxSell', { name: quote.name, qty: safeQty }, `${label} 已成交`)) setQty(1)
+    const verb = side === 'buy' ? '买入' : '卖出'
+    const feedback = ({ receipt }) => {
+      if (!receipt) return `${verb} ${quote.label} 已成交`
+      const { qty: filled, price, fee } = receipt
+      const status = filled < safeQty ? '部分成交' : '已成交'
+      return `${verb} ${quote.label} ×${filled} ${status} · 单价 ${fmtPrice(price)} · 手续费 ${fmtPrice(fee)} 鱼币`
+    }
+    const result = await onAction(side === 'buy' ? 'fxBuy' : 'fxSell', { name: quote.name, qty: safeQty }, feedback)
+    if (result) setQty(1)
   }
   const candleName = quote?.name
   const candleGrain = candleName ? grainOf(candleName) : ''
@@ -1081,7 +1109,7 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
           <div className="fx-summary">
             <div><span>金额</span><b>{fmtPrice(gross)}</b></div>
             <div><span>费用</span><b>{fmtPrice(fee)}</b></div>
-            <div><span>{side === 'buy' ? '需付' : '到手'}</span><b className={side === 'buy' ? 'is-down' : 'is-up'}>{fmtPrice(side === 'buy' ? gross + fee : Math.max(0, gross - fee))}</b></div>
+            <div><span>{side === 'buy' ? '预计需付' : '预计到账'}</span><b className={side === 'buy' ? 'is-down' : 'is-up'}>{fmtPrice(side === 'buy' ? gross + fee : Math.max(0, gross - fee))}</b></div>
           </div>
           {overCap && <p className="fx-warn">上限 {config.maxPosition}</p>}
           {!session.open && <p className="fx-warn">下次开盘 {clock(session.nextOpenAt)}</p>}
