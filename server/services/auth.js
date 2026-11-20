@@ -1,6 +1,6 @@
 import { get, run, transaction } from '../db/index.js'
 import { HttpError, badRequest, forbidden, tooMany, unauthorized } from '../http-util.js'
-import { hashPassword, hashToken, sha256, validatePassword, validateUsername, verifyPassword } from '../lib/passwords.js'
+import { hashPassword, hashPasswordAsync, hashToken, sha256, validatePassword, validateUsername, verifyPasswordAsync } from '../lib/passwords.js'
 import { generateRecoveryCodes, generateTotpSecret, recoveryCodeHash, verifyTotp } from '../lib/totp.js'
 import { randomToken } from '../lib/rng.js'
 import { now } from '../lib/clock.js'
@@ -85,7 +85,7 @@ export function findUserById(db, id) {
 }
 
 // 注册：新账号一律 player；管理员只能由 CLI 或已登录管理员提升。
-export function registerUser(db, { username, password, displayName }, { ip = '' } = {}) {
+export async function registerUser(db, { username, password, displayName }, { ip = '' } = {}) {
   const name = validateUsername(username)
   if (!name.ok) throw badRequest('INVALID_USERNAME', name.message)
   const pass = validatePassword(password)
@@ -94,18 +94,22 @@ export function registerUser(db, { username, password, displayName }, { ip = '' 
   if (failureCount(ipKey, REGISTER_WINDOW_MS) >= REGISTER_MAX_PER_IP) throw tooMany('注册过于频繁，请稍后再试')
   if (findUserByUsername(db, name.username)) throw badRequest('USERNAME_TAKEN', '该用户名已被注册')
 
+  const hash = await hashPasswordAsync(pass.password)
+  // 计算密码期间可能有别的注册请求先完成。
+  if (failureCount(ipKey, REGISTER_WINDOW_MS) >= REGISTER_MAX_PER_IP) throw tooMany('注册过于频繁，请稍后再试')
+  if (findUserByUsername(db, name.username)) throw badRequest('USERNAME_TAKEN', '该用户名已被注册')
   const at = now()
   run(db, 'INSERT INTO users(username, username_key, password_hash, role, display_name, created_at, last_login_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
-    name.username, name.username.toLowerCase(), hashPassword(pass.password), 'player', String(displayName || name.username).slice(0, 40), at, at)
+    name.username, name.username.toLowerCase(), hash, 'player', String(displayName || name.username).slice(0, 40), at, at)
   bumpFailure(ipKey, REGISTER_WINDOW_MS)
   return findUserByUsername(db, name.username)
 }
 
 // 登录第一步：密码正确后，如果已绑定 2FA 就返回一次性挑战而非会话。
 // 标识符可以是用户名，也可以是已验证的邮箱——有 @ 就当邮箱处理。
-export function startLogin(db, { username, password }, { ip = '', userAgent = '' } = {}) {
+export async function startLogin(db, { username, password }, { ip = '', userAgent = '' } = {}) {
   const identifier = typeof username === 'string' ? username.trim() : ''
-  if (!identifier || identifier.length > 254 || typeof password !== 'string') {
+  if (!identifier || identifier.length > 254 || typeof password !== 'string' || password.length > 200) {
     throw new HttpError(401, 'BAD_CREDENTIALS', '用户名、邮箱或密码错误')
   }
   const key = `login:${ip}:${identifier.toLowerCase()}`
@@ -113,11 +117,12 @@ export function startLogin(db, { username, password }, { ip = '', userAgent = ''
   if (failureCount(key) >= LOGIN_MAX_FAILURES || failureCount(ipKey) >= LOGIN_MAX_FAILURES_PER_IP) {
     throw tooMany('登录失败次数过多，请 15 分钟后再试')
   }
-  const user = identifier.includes('@') ? findUserByEmail(db, identifier) : findUserByUsername(db, identifier)
+  const candidate = identifier.includes('@') ? findUserByEmail(db, identifier) : findUserByUsername(db, identifier)
   // 账号不存在也走一遍 scrypt，避免用响应时间枚举账号。
-  const stored = user ? user.password_hash : dummyPassword
-  const ok = verifyPassword(password, stored)
-  if (!user || !ok || user.disabled) {
+  const stored = candidate?.password_hash || dummyPassword
+  const ok = await verifyPasswordAsync(password, stored)
+  const user = ok && candidate && findUserById(db, candidate.id)
+  if (!user || user.disabled || user.password_hash !== stored) {
     bumpFailure(key)
     bumpFailure(ipKey)
     throw new HttpError(401, 'BAD_CREDENTIALS', '用户名、邮箱或密码错误')
@@ -208,10 +213,11 @@ export function readSession(db, token) {
     return null
   }
   // 每天最多续期一次，避免每次请求都写库。
-  if (Number(session.expires_at) - at < SESSION_TTL_MS - 24 * 60 * 60 * 1000) {
+  const renewed = Number(session.expires_at) - at < SESSION_TTL_MS - 24 * 60 * 60 * 1000
+  if (renewed) {
     run(db, 'UPDATE sessions SET expires_at = ? WHERE id = ?', at + SESSION_TTL_MS, id)
   }
-  return { user, mfaAt: Number(session.mfa_at) || 0, sessionId: id }
+  return { user, mfaAt: Number(session.mfa_at) || 0, sessionId: id, renewed }
 }
 
 export function destroySession(db, token) {
@@ -278,14 +284,18 @@ export function stepUp(db, auth, code) {
   })
 }
 
-export function changePassword(db, auth, { currentPassword, newPassword }) {
+export async function changePassword(db, auth, { currentPassword, newPassword }) {
   const user = findUserById(db, auth.user.id)
-  if (!verifyPassword(currentPassword, user.password_hash)) throw badRequest('BAD_CREDENTIALS', '当前密码错误')
+  if (typeof currentPassword !== 'string' || currentPassword.length > 200 ||
+    !await verifyPasswordAsync(currentPassword, user.password_hash)) throw badRequest('BAD_CREDENTIALS', '当前密码错误')
   const pass = validatePassword(newPassword)
   if (!pass.ok) throw badRequest('INVALID_PASSWORD', pass.message)
-  const hash = hashPassword(pass.password)
+  const hash = await hashPasswordAsync(pass.password)
   transaction(db, () => {
-    run(db, 'UPDATE users SET password_hash = ? WHERE id = ?', hash, user.id)
+    const session = get(db, 'SELECT id FROM sessions WHERE id = ? AND expires_at > ?', auth.sessionId, now())
+    if (!session) throw unauthorized()
+    const update = run(db, 'UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ? AND disabled = 0', hash, user.id, user.password_hash)
+    if (!update.changes) throw new HttpError(409, 'CREDENTIAL_CHANGED', '账号状态已更新，请重新登录')
     // 改密码踢掉其它会话，也作废用旧密码申请的验证。
     run(db, 'DELETE FROM sessions WHERE user_id = ? AND id <> ?', user.id, auth.sessionId)
     run(db, 'DELETE FROM login_challenges WHERE user_id = ?', user.id)

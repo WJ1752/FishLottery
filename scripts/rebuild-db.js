@@ -6,7 +6,7 @@ import { backupDatabase, databasePath } from './backup-db.js'
 
 const tables = [
   'email_tokens', 'reset_tokens', 'sessions', 'recovery_codes', 'login_challenges', 'players',
-  'users', 'world_config', 'fx_days', 'fx_bucket', 'fx_bucket_bins', 'fx_day_bins',
+  'users', 'world_config', 'world_config_history', 'fx_days', 'fx_bucket', 'fx_bucket_bins', 'fx_day_bins',
   'lottery_batches', 'lottery_draws', 'action_log', 'admin_audit', 'meta',
 ]
 

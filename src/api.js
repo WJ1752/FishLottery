@@ -18,7 +18,7 @@ export function setUnauthorizedHandler(fn) {
   onUnauthorized = fn
 }
 
-async function request(path, { method = 'GET', body } = {}) {
+export async function request(path, { method = 'GET', body } = {}) {
   const sessionHandler = onUnauthorized
   const signal = AbortSignal.timeout(10000)
   let response, text
@@ -53,6 +53,7 @@ async function request(path, { method = 'GET', body } = {}) {
 const uid = () => (globalThis.crypto?.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
 
 export const api = {
+  status: () => request('/api/status'),
   me: () => request('/api/auth/me'),
   register: (payload) => request('/api/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),

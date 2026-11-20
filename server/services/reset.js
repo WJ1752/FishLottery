@@ -1,6 +1,6 @@
 import { get, run, transaction } from '../db/index.js'
 import { HttpError, badRequest, tooMany } from '../http-util.js'
-import { sha256, verifyPassword } from '../lib/passwords.js'
+import { sha256, verifyPasswordAsync } from '../lib/passwords.js'
 import { randomInt } from 'node:crypto'
 import { now } from '../lib/clock.js'
 import { log } from '../lib/logger.js'
@@ -66,12 +66,16 @@ function generateCode() {
 
 // 第一步：校验密码，然后把验证码发到账号已验证的邮箱。
 export async function requestProgressReset(db, userId, { password }) {
-  const user = get(db, 'SELECT * FROM users WHERE id = ?', Number(userId))
-  if (!user) throw badRequest('NO_USER', '账号不存在')
+  const before = get(db, 'SELECT password_hash FROM users WHERE id = ?', Number(userId))
+  if (!before) throw badRequest('NO_USER', '账号不存在')
   assertNotLocked(userId)
-  if (!verifyPassword(password, user.password_hash)) {
+  if (typeof password !== 'string' || password.length > 200 || !await verifyPasswordAsync(password, before.password_hash)) {
     bumpPasswordFailure(userId)
     throw new HttpError(401, 'BAD_CREDENTIALS', '密码错误')
+  }
+  const user = get(db, 'SELECT * FROM users WHERE id = ?', Number(userId))
+  if (!user || user.disabled || user.password_hash !== before.password_hash) {
+    throw new HttpError(409, 'CREDENTIAL_CHANGED', '账号状态已更新，请重新登录')
   }
   passwordFailures.delete(Number(userId))
   // 没有已验证邮箱就没法完成第二步：明确告诉前端去绑定，而不是静默失败。

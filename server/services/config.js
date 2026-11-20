@@ -1,7 +1,18 @@
-import { get, run } from '../db/index.js'
+import { all, get, run } from '../db/index.js'
 import { DEFAULT_CONFIG, normalizeConfig } from '../../src/game.js'
 import { now } from '../lib/clock.js'
 import { HttpError } from '../http-util.js'
+
+const HISTORY_COUNT = 20
+
+export function recentConfigHistory(db) {
+  return all(db, 'SELECT version, published_at AS publishedAt FROM world_config_history ORDER BY version DESC LIMIT ?', HISTORY_COUNT)
+}
+
+export function archivedConfig(db, version) {
+  const row = get(db, 'SELECT config FROM world_config_history WHERE version = ?', version)
+  return row ? JSON.parse(row.config) : null
+}
 
 // 全服配置：后台保存后版本 +1，玩家在下一次同步时懒应用。
 export function getConfig(db) {
@@ -32,7 +43,12 @@ export function saveConfig(db, rawConfig, { expectedVersion } = {}) {
   }
   const version = currentVersion + 1
   if (existing) {
+    run(db, `INSERT INTO world_config_history (version, config, published_at)
+      SELECT version, config, updated_at FROM world_config WHERE id = 1`)
     run(db, 'UPDATE world_config SET config = ?, version = ?, updated_at = ? WHERE id = 1', JSON.stringify(config), version, at)
+    run(db, `DELETE FROM world_config_history WHERE version IN (
+      SELECT version FROM world_config_history ORDER BY version DESC LIMIT -1 OFFSET ?
+    )`, HISTORY_COUNT)
   } else {
     run(db, 'INSERT INTO world_config(id, config, version, updated_at) VALUES(1, ?, ?, ?)', JSON.stringify(config), version, at)
   }

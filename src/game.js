@@ -1,4 +1,4 @@
-import { SAW_THRESHOLD_BASE, TENSION_DEFAULTS, TRAITS, aggregateTraitEffects, biteWeightFor, comboBiteChance, fishPoolFor, normalizeTrait, pickTraitsWeighted, rarityLabel, tensionAt, tensionFillMs } from './traits.js'
+import { FISH_POOLS, SAW_THRESHOLD_BASE, TENSION_DEFAULTS, TRAITS, aggregateTraitEffects, biteWeightFor, comboBiteChance, fishPoolFor, normalizeTrait, pickTraitsWeighted, rarityLabel, tensionAt, tensionFillMs } from './traits.js'
 import { FX_GRAIN_BY_ID } from './fx-grains.js'
 
 export { TRAITS }
@@ -7,7 +7,7 @@ export { TRAITS }
 export const STORAGE_KEY = 'deepwater-lottery-v1'
 export const ENERGY_PER_CATCH = 10000
 export const BASE_ENERGY_PER_SECOND = 1000
-export const STATE_VERSION = 14
+export const STATE_VERSION = 15
 // 刮刮乐默认牌面格数：三格里出现任意一对相同奖励即可兑奖。
 export const SCRATCH_DEFAULT_SLOTS = 3
 export const SCRATCH_MIN_SLOTS = 2
@@ -391,7 +391,7 @@ export const DEFAULT_CONFIG = {
         settle: { batchMax: 60 },
       },
       watcher: {
-        id: 'watcher', name: '盯盘机 · 行情机', accent: '#5a6a7a', enabled: false,
+        id: 'watcher', name: '盯盘机 · 行情机', accent: '#5a6a7a', enabled: true,
         unlock: { kind: 'blackMarket', also: 'fx' },
         shift: { startHour: 8, endHour: 24 },
         rate: { msPerItem: 60000 },
@@ -1375,7 +1375,7 @@ export function fxExchangeFlow(fish) {
 // 买入：按买价扣鱼币，得到份数。// 买入：按买价扣鱼币，得到份数。手续费单独扣，所以实际花费 = 价格 + 手续费。
 export function fxBuy(state, name, qty, now = Date.now()) {
   // 收市期间不接受委托：价格已定但不可成交，等下一个交易日 08:00 开盘。
-  if (!fxCanTrade(state, now)) return state
+  if (!Object.hasOwn(TRAITS_BY_ID, name) || !fxCanTrade(state, now)) return state
   const config = fxConfig(state)
   const quote = fxQuote(state, name, now)
   const amount = Math.max(0, Math.floor(Number(qty) || 0))
@@ -1392,14 +1392,14 @@ export function fxBuy(state, name, qty, now = Date.now()) {
     fx: {
       ...(state.fx || {}),
       positions: { ...(state.fx?.positions || {}), [name]: held + allowed },
-      trades: [{ id: `fx-${now}-${Math.random().toString(36).slice(2, 7)}`, side: 'buy', name, qty: allowed, price: quote.buy, fee, at: stamp() }, ...(state.fx?.trades || [])].slice(0, 60),
+      trades: [{ id: `fx-${now}-${Math.random().toString(36).slice(2, 7)}`, side: 'buy', name, qty: allowed, price: quote.buy, fee, at: new Date(now).toISOString() }, ...(state.fx?.trades || [])].slice(0, 60),
     },
   }
 }
 
 // 卖出：按卖价结算鱼币，份数扣减。手续费从成交额里扣。
 export function fxSell(state, name, qty, now = Date.now()) {
-  if (!fxCanTrade(state, now)) return state
+  if (!Object.hasOwn(TRAITS_BY_ID, name) || !fxCanTrade(state, now)) return state
   const config = fxConfig(state)
   const quote = fxQuote(state, name, now)
   const held = fxPosition(state, name)
@@ -1413,7 +1413,7 @@ export function fxSell(state, name, qty, now = Date.now()) {
     fx: {
       ...(state.fx || {}),
       positions: { ...(state.fx?.positions || {}), [name]: held - amount },
-      trades: [{ id: `fx-${now}-${Math.random().toString(36).slice(2, 7)}`, side: 'sell', name, qty: amount, price: quote.sell, fee, at: stamp() }, ...(state.fx?.trades || [])].slice(0, 60),
+      trades: [{ id: `fx-${now}-${Math.random().toString(36).slice(2, 7)}`, side: 'sell', name, qty: amount, price: quote.sell, fee, at: new Date(now).toISOString() }, ...(state.fx?.trades || [])].slice(0, 60),
     },
   }
 }
@@ -1785,7 +1785,7 @@ export const DEFAULT_GUIDE = {
 }
 
 // 引导里所有可见文案都放在配置里，后台改字不用发版。
-export const DEFAULT_GUIDE_COPY = {
+const previousGuideCopy = {
   tension: '张力条就是倒计时：进度充满前，上方张力会一直上涨；张力先满就会脱钩——这条鱼跑掉，耐久也会掉一些。想让鱼先到手，就去钓竿页把「钓鱼速度」和「最大张力」升上去。',
   rodUpgrade: '升级用的材料已经放进背包：浮木纤维、潮汐树脂、渊核碎片、深蓝晶片各一份，另外还有 1000 鱼币。先去钓竿页把「钓鱼速度」升一级，再升一级「最大张力」，脱钩会明显变少。',
   scratch: '刮刮乐是材料的主要来源：三格中出现两个相同奖励就能兑奖，产出的浮木纤维、潮汐树脂、深蓝晶片正是钓竿强化的原料。刮到 45% 会自动翻牌，不用刮满。',
@@ -1795,9 +1795,23 @@ export const DEFAULT_GUIDE_COPY = {
   fx: '深海FX 已开启，并已发放 10000 鱼币。你钓上来的每一个词条都是一个可交易的标的——上钩会让它变少（涨价），卖出会让它变多（跌价）。',
   stats: '中奖统计汇总了你的上钩、兑奖与各奖池命中分布，用来回看运气。',
   rodGuide: '钓竿分三种来路：开局的「潮痕 · 初阶」自带；「苍蓝 · 进阶」「无光 · 深渊」来自彩票；「无灯 · 黑市」要等解锁海沟后用黑市渔币买。点右侧的耐久条可以打开钓竿面板——在那里换竿、强化、维修，材料也列在最下方。',
-  scratchLuck: '刮层直觉：每刮开 10 张，自动翻牌阈值会降低、刮除半径会变大，最高 20 级。当前等级和进度就显示在刮刮乐页顶部。',
   seaHint: '越往深处，词条越稀有，需要解锁的材料越高级；更多功能也会随海域一同解锁。',
   seaProduce: '这一片海主要出土：{materials}',
+}
+
+export const DEFAULT_GUIDE_COPY = {
+  tension: '垂钓进度先满，鱼获入仓。张力先满，鱼会脱钩并损耗钓竿。常常脱钩时可先回河口，或在「钓竿与强化」提升钓竿。',
+  rodUpgrade: '首批强化补给已入账。打开「钓竿与强化」，先试着提升速度或最大张力。接着在港湾累积鱼获，领取勘探锁钥与进阶钓竿。',
+  scratch: '翻开后按票面相同图案组合结算，可获鱼币或强化材料。拖动擦除涂层，也可使用「直接翻牌」。',
+  npc: '在潮汐商会把鱼获兑换成票券。鱼获占用仓位，仓库满后先清理再继续垂钓。',
+  lottery: '用空白彩票合成号码票，本期开奖后即可结算。票券和奖品都在游戏内使用。探索新海域也可以通过勘探获得锁钥和钓竿。',
+  rodPower: '点「钓竿与强化」可切换钓竿、维修和查看升级材料。海域勘探有明确的装备奖励，进入更深海域前先换上进阶钓竿。',
+  fx: '深海 FX 已开放，可用鱼币买卖鱼获词条标的。报价随市场供给变化，买卖都有手续费。点击标的查看当前报价、开市时间和交易记录。',
+  stats: '航海日志记录了发现的鱼种、各海域的鱼获以及票券兑奖情况。',
+  rodGuide: '完成港湾和礁石勘探可获得「苍蓝 · 进阶」与「无光 · 深渊」，它们也可能出现在奖池中。「无灯 · 黑市」可在解锁海沟后购买。用「钓竿与强化」切换、维修和升级钓竿。',
+  scratchLuck: '刮层直觉：每刮开 10 张，自动翻牌阈值会降低、刮除半径会变大，最高 20 级。当前等级和进度就显示在刮刮乐页顶部。',
+  seaHint: '依次完成海域勘探，领取新航线所需的锁钥。越深的海域越考验钓具。',
+  seaProduce: '相关勘探补给 · {materials}',
 }
 
 const guideClamp = (value, min, max, fallback = min) => {
@@ -1830,7 +1844,8 @@ export function normalizeGuideConfig(raw) {
   const copyTable = { ...DEFAULT_GUIDE_COPY }
   if (source.copy && typeof source.copy === 'object') {
     Object.keys(DEFAULT_GUIDE_COPY).forEach((key) => {
-      if (typeof source.copy[key] === 'string' && source.copy[key].trim()) copyTable[key] = source.copy[key].slice(0, 800)
+      const copy = source.copy[key]
+      if (typeof copy === 'string' && copy.trim() && copy !== previousGuideCopy[key]) copyTable[key] = copy.slice(0, 800)
     })
   }
   // 顺序固定为内置顺序：后台只能改阈值与文案，不能靠乱序让玩家跳级。
@@ -1846,7 +1861,7 @@ export function normalizeGuideConfig(raw) {
       // 单步文案留空表示「用 copy 表里的那一份」。
       // 不能在这里回退成默认文案：归一化会把默认值固化进 steps，
       // 后台之后改 copy 表就被这份固化值盖住了。
-      copy: (typeof raw.copy === 'string' && raw.copy.trim() ? raw.copy : (fallback.copy || '')).slice(0, 800),
+      copy: (typeof raw.copy === 'string' && raw.copy.trim() && raw.copy !== previousGuideCopy[id] ? raw.copy : (fallback.copy || '')).slice(0, 800),
       card: raw.card === undefined ? Boolean(fallback.card) : Boolean(raw.card),
       // null / 缺省 = 沿用全局 minCloseMs（前端用 `??` 回退，所以这里必须保留 null 语义）。
       minCloseMs: raw.minCloseMs === undefined || raw.minCloseMs === null || raw.minCloseMs === '' ? null : guideClamp(raw.minCloseMs, 0, 20000, GUIDE_DEFAULT_MIN_CLOSE_MS),
@@ -2411,8 +2426,7 @@ export function normalizeMachinesConfig(raw) {
         id,
         name: typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 32) : fallback.name,
         accent: typeof item.accent === 'string' && item.accent.trim() ? item.accent.slice(0, 16) : fallback.accent,
-        // 盯盘机的挂单与撤单入口尚未开放。保留定义供旧存档读档和结算。
-        enabled: id !== 'watcher' && (item.enabled === undefined ? fallback.enabled !== false : Boolean(item.enabled)),
+        enabled: item.enabled === undefined ? fallback.enabled !== false : Boolean(item.enabled),
         unlock: {
           kind: ['scratched', 'blackMarket', 'depth', 'always'].includes(unlock.kind) ? unlock.kind : fallback.unlock.kind,
           value: Math.max(0, Math.round(finiteNumber(unlock.value, fallback.unlock.value ?? 0))),
@@ -2623,12 +2637,21 @@ export function rodRepairCap(rod) {
 
 // 是否可以维修：只要耐久没满就能修（溢出部分不设上限，但未满即未满）。
 export function canRepairRod(state, rod = state?.rod) {
+  if (canEmergencyRepairRod(state, rod)) return true
   const repair = (rodConfigFor(state?.config, rod) || {}).repair || { material: '深蓝晶片', amount: 50, cost: 1 }
   const material = repair.material || '深蓝晶片'
   const cost = Math.max(1, Number(repair.cost) || 1)
   if ((state?.inventory?.[material] || 0) < cost) return false
   // 标称上限就是「满」的界：达到或超过它就不再允许维修。
   return Math.max(0, Number(rod?.durability) || 0) < rodRepairCap(rod)
+}
+
+export function canEmergencyRepairRod(state, rod = state?.rod) {
+  if (!rod || rodRepairCap(rod) <= MIN_DURABILITY) return false
+  const def = rodConfigFor(state?.config, rod)
+  if (def.id !== 'tide' || Number(rod.durability) >= autoStopThreshold({ ...state, rod })) return false
+  const repair = def.repair || DEFAULT_CONFIG.rods[0].repair
+  return (Number(state?.inventory?.[repair.material]) || 0) < (Number(repair.cost) || 1)
 }
 
 export function fishQuotePrice(state, fish) {
@@ -2792,7 +2815,84 @@ function emptyStats() {
   // hits 是总命中分布；hitsByPool 按奖池拆开，两者同时展示。
   // claimedPrizes 是总兑奖数；claimedTickets / claimedScratch 分开计，
   // 因为兑奖后票据会从背包移除，页面只能靠统计显示历史。
-  return { totalCatches: 0, totalEscapes: 0, totalExchanged: 0, totalSold: 0, fishByDepth: { 河口: 0, 港湾: 0, 礁石: 0, 海沟: 0, 裂谷: 0, 深渊: 0 }, totalDurabilityLoss: 0, totalTickets: 0, totalTicketsEarned: 0, totalScratch: 0, totalScratchEarned: 0, scratchPairs: 0, scratchCoins: 0, claimedPrizes: 0, claimedTickets: 0, claimedScratch: 0, hits: [0, 0, 0, 0, 0, 0, 0], hitsByPool: {}, comboSeen: {} }
+  return { totalCatches: 0, totalEscapes: 0, totalExchanged: 0, totalSold: 0, fishByDepth: { 河口: 0, 港湾: 0, 礁石: 0, 海沟: 0, 裂谷: 0, 深渊: 0 }, speciesSeen: {}, totalDurabilityLoss: 0, totalTickets: 0, totalTicketsEarned: 0, totalScratch: 0, totalScratchEarned: 0, scratchPairs: 0, scratchCoins: 0, claimedPrizes: 0, claimedTickets: 0, claimedScratch: 0, hits: [0, 0, 0, 0, 0, 0, 0], hitsByPool: {}, comboSeen: {} }
+}
+
+const SPECIES_CLASSES = new Set(Object.values(FISH_POOLS).flatMap((pool) => pool.map(({ speciesClass }) => speciesClass)))
+
+function migrateSpeciesSeen(parsed) {
+  const saved = parsed?.stats?.speciesSeen
+  if (saved && typeof saved === 'object') {
+    return Object.fromEntries(Object.entries(saved).filter(([key, value]) => SPECIES_CLASSES.has(key) && Number.isSafeInteger(value) && value > 0))
+  }
+  const recorded = new Set()
+  return [...(Array.isArray(parsed?.fish) ? parsed.fish : []), parsed?.fishing?.lastCatch?.fish].reduce((seen, fish) => {
+    if (!fish?.id || recorded.has(fish.id) || !SPECIES_CLASSES.has(fish.speciesClass)) return seen
+    recorded.add(fish.id)
+    seen[fish.speciesClass] = (seen[fish.speciesClass] || 0) + 1
+    return seen
+  }, {})
+}
+
+export const DAILY_CONTRACTS = [
+  { id: 'catch', label: '钓获 8 条鱼', target: 8, reward: { coins: 80, materials: { '浮木纤维': 1 } } },
+  { id: 'trade', label: '在商会兑换 3 条鱼', target: 3, reward: { coins: 100, materials: { '潮汐树脂': 1 } } },
+  { id: 'reveal', label: '亲手翻开 3 张刮刮乐', target: 3, reward: { coins: 120, materials: { '深蓝晶片': 1 } } },
+]
+
+const contractDay = (at) => Math.floor(Number(at) / FX_DAY_MS)
+
+function emptyDailyContracts(day = null) {
+  return { day, progress: { catch: 0, trade: 0, reveal: 0 }, claimed: {} }
+}
+
+function normalizeDailyContracts(raw) {
+  if (!Number.isSafeInteger(raw?.day)) return emptyDailyContracts()
+  const daily = emptyDailyContracts(raw.day)
+  for (const { id, target } of DAILY_CONTRACTS) {
+    daily.progress[id] = clamp(Math.floor(finiteNumber(raw?.progress?.[id], 0)), 0, target)
+    if (raw?.claimed?.[id] === true) daily.claimed[id] = true
+  }
+  return daily
+}
+
+export function refreshDailyContracts(state, at = Date.now()) {
+  const day = contractDay(at)
+  const lastDay = state.daily?.day
+  if (!Number.isSafeInteger(day) || (Number.isSafeInteger(lastDay) && lastDay >= day)) return state
+  return { ...state, daily: emptyDailyContracts(day) }
+}
+
+function recordDailyContract(state, contractId, count, at) {
+  const next = refreshDailyContracts(state, at)
+  if (next.daily?.day !== contractDay(at)) return next
+  const progress = next.daily.progress[contractId]
+  const target = DAILY_CONTRACTS.find(({ id }) => id === contractId).target
+  const earned = Math.min(target, progress + count)
+  if (earned === progress) return next
+  return { ...next, daily: { ...next.daily, progress: { ...next.daily.progress, [contractId]: earned } } }
+}
+
+export function claimDailyContract(state, contractId, at = Date.now()) {
+  const contract = DAILY_CONTRACTS.find(({ id }) => id === contractId)
+  const next = refreshDailyContracts(state, at)
+  const daily = next.daily
+  if (!contract || daily?.day !== contractDay(at)) return { state, code: 'CONTRACT_UNAVAILABLE' }
+  if (daily.claimed[contractId]) return { state, code: 'CONTRACT_CLAIMED' }
+  if (daily.progress[contractId] < contract.target) return { state, code: 'CONTRACT_INCOMPLETE' }
+  const inventory = { ...next.inventory }
+  for (const [name, amount] of Object.entries(contract.reward.materials)) {
+    inventory[name] = (Number(inventory[name]) || 0) + amount
+  }
+  return {
+    state: {
+      ...next,
+      coins: (Number(next.coins) || 0) + contract.reward.coins,
+      inventory,
+      daily: { ...daily, claimed: { ...daily.claimed, [contractId]: true } },
+    },
+    code: null,
+  }
 }
 
 function makeTicket(id, status = 'BLANK', tier = null) {
@@ -2978,6 +3078,8 @@ export function createInitialState(worldConfig = null, random = Math.random) {
     machines: createMachinesState(),
     // 逐个解锁：只推进 stage，不改任何经济数值。
     guide: createGuideState(),
+    daily: emptyDailyContracts(),
+    depthSurveys: {},
     // 深海FX：positions 记份数，days / today 由服务端注入全服行情，不落玩家快照。
     fx: { positions: {}, days: {}, today: {}, bins: {}, trades: [] },
     stats: emptyStats(),
@@ -3083,6 +3185,7 @@ function migrateState(parsed, worldConfig = null) {
     return hits > 0 ? { ...map, [combo.id]: hits } : map
   }, {})
   const stats = { ...fresh.stats, ...(parsed?.stats || {}), comboSeen: derivedSeen, fishByDepth, hits: Array.isArray(parsed?.stats?.hits) ? parsed.stats.hits : fresh.stats.hits, hitsByPool: parsed?.stats?.hitsByPool && typeof parsed.stats.hitsByPool === 'object' ? parsed.stats.hitsByPool : fresh.stats.hitsByPool, claimedTickets: Math.max(0, Number(parsed?.stats?.claimedTickets) || 0), claimedScratch: Math.max(0, Number(parsed?.stats?.claimedScratch) || 0) }
+  stats.speciesSeen = migrateSpeciesSeen(parsed)
   // 老存档没有「累计获得」字段：按下注/刮开历史一次性补齐，避免解锁条件被误判为未达成。
   stats.totalTicketsEarned = Math.max(0, Math.round(Number(parsed?.stats?.totalTicketsEarned) || Number(parsed?.stats?.totalTickets) || 0))
   stats.totalScratchEarned = Math.max(0, Math.round(Number(parsed?.stats?.totalScratchEarned) || Number(parsed?.stats?.totalScratch) || 0))
@@ -3123,15 +3226,17 @@ function migrateState(parsed, worldConfig = null) {
     config,
     blackMarket,
     guide,
+    daily: normalizeDailyContracts(parsed?.daily),
+    depthSurveys: Object.fromEntries(DEPTH_SURVEYS.filter(({ toId }) => parsed?.depthSurveys?.[toId] === true).map(({ toId }) => [toId, true])),
     warehouseLevel,
     rod: activeRod,
     rods: rods.map((rod) => rod.id === activeRod.id ? { ...rod, ...activeRod, status: activeRod.status } : rod),
     stats,
-    // FX 存档：份数取整且不超过上限，避免改档刷出负库存。
+    // 新上限只限制买入，运营下调时保留已有可卖出的持仓。
     // days 是已结算日线（价格与 7 天回看的唯一来源），today 是当天还没结算的桶。
     fx: {
       positions: Object.keys(TRAITS_BY_ID).reduce((map, name) => {
-        const held = Math.max(0, Math.min(config.fx.maxPosition, Math.floor(Number(parsed?.fx?.positions?.[name]) || 0)))
+        const held = clamp(Math.floor(finiteNumber(parsed?.fx?.positions?.[name], 0)), 0, Number.MAX_SAFE_INTEGER)
         return held > 0 ? { ...map, [name]: held } : map
       }, {}),
       days: Object.keys(TRAITS_BY_ID).reduce((map, name) => {
@@ -3269,14 +3374,52 @@ export const MATERIAL_SOURCE = {
   潮汐树脂: '刮刮乐 · 彩票',
   深蓝晶片: '刮刮乐 · 彩票',
   渊核碎片: '刮刮乐 · 彩票',
-  潮汐锁钥: '彩票 · 黑市',
-  深渊锁钥: '彩票 · 黑市',
+  潮汐锁钥: '海域勘探 · 彩票 · 黑市',
+  深渊锁钥: '海域勘探 · 彩票 · 黑市',
   旧日合金: '彩票 · 黑市',
 }
 
 export function depthUnlockCost(state, depthId) {
   const config = state?.config || DEFAULT_CONFIG
   return config.depthUnlocks?.[depthId] ?? DEPTHS.find((depth) => depth.id === depthId)?.unlock ?? null
+}
+
+const DEPTH_SURVEYS = [
+  { fromId: 'shelf', toId: 'open', target: 12, rodId: 'azure' },
+  { fromId: 'open', toId: 'deep', target: 25, rodId: 'abyss' },
+  { fromId: 'deep', toId: 'rift', target: 45 },
+  { fromId: 'rift', toId: 'abyss', target: 75 },
+]
+
+export function depthSurvey(state, depthId) {
+  const survey = DEPTH_SURVEYS.find(({ toId }) => toId === depthId)
+  if (!survey) return null
+  const source = DEPTHS.find(({ id }) => id === survey.fromId)
+  const caught = Math.max(0, Math.floor(Number(state.stats?.fishByDepth?.[source.label]) || 0))
+  return { fromId: survey.fromId, target: survey.target, rodId: survey.rodId || null, caught, rewarded: state.depthSurveys?.[depthId] === true }
+}
+
+export function advanceDepthSurveys(state) {
+  let next = state
+  for (const { toId } of DEPTH_SURVEYS) {
+    const survey = depthSurvey(next, toId)
+    if (survey.rewarded || survey.caught < survey.target) continue
+    const { material, cost } = depthUnlockCost(next, toId) || {}
+    const alreadyUnlocked = depthsFor(next).some(({ id }) => id === toId)
+    const quantity = !alreadyUnlocked && material ? Math.ceil(finiteNumber(cost, 0)) : 0
+    const config = next.config || DEFAULT_CONFIG
+    const def = config.rods.find(({ id }) => id === survey.rodId)
+    const rods = def && !next.rods.some((rod) => rodConfigFor(config, rod).id === def.id)
+      ? [...next.rods, { ...def, id: `rod-${def.id}`, status: 'stored', durability: def.maxDurability, levels: {} }]
+      : next.rods
+    next = {
+      ...next,
+      inventory: quantity > 0 ? { ...next.inventory, [material]: (Number(next.inventory?.[material]) || 0) + quantity } : next.inventory,
+      rods,
+      depthSurveys: { ...next.depthSurveys, [toId]: true },
+    }
+  }
+  return next
 }
 
 // 升级费用随等级递增：鱼币用 growth；主材料 / 副材料各自用 materialGrowth / secondMaterialGrowth，
@@ -3644,6 +3787,9 @@ export function resolveBite(state, bite, resolved, now = Date.now()) {
       totalCatches: (state.stats.totalCatches || 0) + 1,
       totalDurabilityLoss: (state.stats.totalDurabilityLoss || 0) + sawApplied,
       fishByDepth: { ...state.stats.fishByDepth, [fish.depth]: (state.stats.fishByDepth?.[fish.depth] || 0) + 1 },
+      speciesSeen: SPECIES_CLASSES.has(fish.speciesClass)
+        ? { ...state.stats.speciesSeen, [fish.speciesClass]: (state.stats.speciesSeen?.[fish.speciesClass] || 0) + 1 }
+        : state.stats.speciesSeen,
       comboSeen,
     },
     fishing: {
@@ -3659,7 +3805,7 @@ export function resolveBite(state, bite, resolved, now = Date.now()) {
     },
   }
   // 上钩把鱼身上的词条抽离市场，供给减少 → 当日记正流入。
-  return fxAppendFlow(caughtState, fxBiteFlow(fishRecord), resolvedAt)
+  return fxAppendFlow(recordDailyContract(caughtState, 'catch', 1, resolvedAt), fxBiteFlow(fishRecord), resolvedAt)
 }
 
 // 每个循环开始时鱼即咬钩：钓鱼进度从当前值继续上涨，张力从 0 开始上涨。
@@ -4195,7 +4341,7 @@ function compactFishHistory(fish) {
 
 // 揭示只翻牌：卡面在发卡时就已经生成，这里不再抽奖，
 // 只结算一次对子并写回 payout。老存档没有卡面的，按当前奖池补抽一次。
-export function revealScratch(state, cardId, random = Math.random) {
+export function revealScratch(state, cardId, random = Math.random, at = Date.now()) {
   const card = state.scratchCards.find((c) => c.id === cardId)
   if (!card || card.status !== 'ready') return state
   const config = state.config || DEFAULT_CONFIG
@@ -4203,11 +4349,11 @@ export function revealScratch(state, cardId, random = Math.random) {
   const face = Array.isArray(card.face) && card.face.length ? card.face : drawScratchFace(type, random)
   const settlement = scratchSettlement(face)
   const payout = settlement.payouts.length ? settlement.payouts : null
-  return {
+  return recordDailyContract({
     ...state,
-    scratchCards: state.scratchCards.map((c) => c.id === cardId ? { ...c, status: 'revealed', face, payout, pairs: settlement.pairs, reward: payout, revealedAt: stamp() } : c),
+    scratchCards: state.scratchCards.map((c) => c.id === cardId ? { ...c, status: 'revealed', face, payout, pairs: settlement.pairs, reward: payout, revealedAt: new Date(at).toISOString() } : c),
     stats: { ...state.stats, totalScratch: (state.stats.totalScratch || 0) + 1, scratchPairs: (state.stats.scratchPairs || 0) + settlement.pairs },
-  }
+  }, 'reveal', 1, at)
 }
 
 // 一键兑奖：把已刮开的卡片按结算结果入账（鱼币进余额，材料进背包）。
@@ -5419,35 +5565,10 @@ export function blackSuperReveal(state, now = Date.now(), config = state?.config
   }
 }
 
-export function exchangeFish(state, fishId, now = Date.now()) {
+export function exchangeFish(state, fishId, now = Date.now(), random = Math.random) {
   const fish = state.fish.find((f) => f.id === fishId && f.status === 'fresh')
   if (!fish) return state
-  const quote = quoteForFish(state, fish)
-  const tickets = [...state.tickets]
-  if (quote.tickets) for (let i = 0; i < quote.tickets.qty; i += 1) tickets.push(makeTicket(`ticket-${now}-${i}-${Math.random().toString(36).slice(2, 5)}`))
-  const scratchCards = [...state.scratchCards]
-  if (quote.scratch) for (let i = 0; i < quote.scratch.qty; i += 1) scratchCards.push(makeScratchCard(`scratch-${now}-${i}`, quote.scratch.typeId, scratchTypeFor(state.config || DEFAULT_CONFIG, quote.scratch.typeId)))
-  const text = `${fish.name} 已交给潮汐商会，获得 ${quoteLabel(quote)}。`
-  const at = Number(now)
-  const gainedTickets = Math.max(0, Number(quote.tickets?.qty) || 0)
-  const gainedScratch = Math.max(0, Number(quote.scratch?.qty) || 0)
-  const next = {
-    ...state,
-    fish: compactFishHistory(state.fish.map((f) => f.id === fishId ? { ...f, status: 'exchanged', exchangedAt: stamp() } : f)),
-    tickets,
-    scratchCards,
-    npc: { ...state.npc, lastExchange: { fish, quote, at: stamp() } },
-    // 「累计获得」只增不减：玩家刮掉/兑掉之后仍算进解锁条件，条件不会回退。
-    stats: {
-      ...state.stats,
-      totalExchanged: (Number(state.stats?.totalExchanged) || 0) + 1,
-      totalSold: (Number(state.stats?.totalSold) || 0) + 1,
-      totalTicketsEarned: (Number(state.stats?.totalTicketsEarned) || 0) + gainedTickets,
-      totalScratchEarned: (Number(state.stats?.totalScratchEarned) || 0) + gainedScratch,
-    },
-  }
-  // 卖出把词条还回市场，和上钩严格对称：钓上来再卖掉，净影响为 0。
-  return fxAppendFlow(next, fxExchangeFlow(fish), at)
+  return exchangeFishTargets(state, [fish], now, random, false)
 }
 
 // 商会列表与一键兑换共用这套筛选口径，避免前后端各写一套条件后对不上。
@@ -5459,43 +5580,47 @@ export function fishMatchesExchangeFilter(state, fish, filter = '全部') {
 }
 
 // 批量兑换：一次把多箱鱼交给商会，累加所有报价后统一发奖。
-export function exchangeFishBatch(state, fishIds, now = Date.now()) {
+export function exchangeFishBatch(state, fishIds, now = Date.now(), random = Math.random) {
   const ids = new Set(Array.isArray(fishIds) ? fishIds : [])
   const targets = state.fish.filter((fish) => fish.status === 'fresh' && ids.has(fish.id))
-  return exchangeFishTargets(state, targets, now)
+  return exchangeFishTargets(state, targets, now, random)
 }
 
 // 一键兑换：仓库可能上千条鱼，逐条传 fishId 会超过请求体上限（还会被服务端截断）。
 // 因此只传筛选范围，由服务端按同一套口径从存档里自己挑鱼。
-export function exchangeFishBatchByFilter(state, filter, now = Date.now()) {
+export function exchangeFishBatchByFilter(state, filter, now = Date.now(), random = Math.random) {
   const targets = state.fish.filter((fish) => fish.status === 'fresh' && fishMatchesExchangeFilter(state, fish, filter))
-  return exchangeFishTargets(state, targets, now)
+  return exchangeFishTargets(state, targets, now, random)
 }
 
-function exchangeFishTargets(state, targets, now = Date.now()) {
+function exchangeFishTargets(state, targets, now, random, batch = true) {
   if (!targets.length) return state
   const tickets = [...state.tickets]
   const scratchCards = [...state.scratchCards]
   let lastQuote = null
-  targets.forEach((fish, index) => {
+  let gainedTickets = 0
+  let gainedScratch = 0
+  targets.forEach((fish) => {
     const quote = quoteForFish(state, fish)
     lastQuote = quote
     if (quote.tickets) {
-      for (let i = 0; i < quote.tickets.qty; i += 1) tickets.push(makeTicket(`ticket-${now}-${index}-${i}-${Math.random().toString(36).slice(2, 5)}`))
+      gainedTickets += quote.tickets.qty
+      for (let i = 0; i < quote.tickets.qty; i += 1) tickets.push(makeTicket(`ticket-${fish.id}-${i}`))
     }
     if (quote.scratch) {
-      for (let i = 0; i < quote.scratch.qty; i += 1) scratchCards.push(makeScratchCard(`scratch-${now}-${index}-${i}`, quote.scratch.typeId, scratchTypeFor(state.config || DEFAULT_CONFIG, quote.scratch.typeId)))
+      gainedScratch += quote.scratch.qty
+      const type = scratchTypeFor(state.config || DEFAULT_CONFIG, quote.scratch.typeId)
+      for (let i = 0; i < quote.scratch.qty; i += 1) scratchCards.push(makeScratchCard(`scratch-${fish.id}-${i}`, quote.scratch.typeId, type, random))
     }
   })
   const exchanged = new Set(targets.map((fish) => fish.id))
-  const gainedTickets = targets.reduce((sum, fish) => sum + Math.max(0, Number(quoteForFish(state, fish).tickets?.qty) || 0), 0)
-  const gainedScratch = targets.reduce((sum, fish) => sum + Math.max(0, Number(quoteForFish(state, fish).scratch?.qty) || 0), 0)
+  const at = new Date(now).toISOString()
   const next = {
     ...state,
-    fish: compactFishHistory(state.fish.map((fish) => exchanged.has(fish.id) ? { ...fish, status: 'exchanged', exchangedAt: stamp() } : fish)),
+    fish: compactFishHistory(state.fish.map((fish) => exchanged.has(fish.id) ? { ...fish, status: 'exchanged', exchangedAt: at } : fish)),
     tickets,
     scratchCards,
-    npc: { ...state.npc, lastExchange: { fish: targets[targets.length - 1], quote: lastQuote, count: targets.length, at: stamp() } },
+    npc: { ...state.npc, lastExchange: { fish: targets[targets.length - 1], quote: lastQuote, ...(batch ? { count: targets.length } : {}), at } },
     stats: {
       ...state.stats,
       totalExchanged: (Number(state.stats?.totalExchanged) || 0) + targets.length,
@@ -5504,10 +5629,10 @@ function exchangeFishTargets(state, targets, now = Date.now()) {
       totalScratchEarned: (Number(state.stats?.totalScratchEarned) || 0) + gainedScratch,
     },
   }
-  return fxAppendFlow(next, targets.flatMap((fish) => fxExchangeFlow(fish)), Number(now))
+  return fxAppendFlow(recordDailyContract(next, 'trade', targets.length, now), targets.flatMap((fish) => fxExchangeFlow(fish)), Number(now))
 }
 
-export function repairRod(state, rodId, amount) {
+export function repairRod(state, rodId, amount, at = Date.now()) {
   const config = state.config || DEFAULT_CONFIG
   const target = state.rods.find((r) => r.id === rodId)
   if (!target) return state
@@ -5516,22 +5641,30 @@ export function repairRod(state, rodId, amount) {
   const restore = Math.max(1, Number(amount) || Number(repair.amount) || 50)
   const material = repair.material || '深蓝晶片'
   const cost = Math.max(1, Number(repair.cost) || 1)
-  if ((state.inventory[material] || 0) < cost) return state
   const active = state.rod.id === rodId
   // 溢出维修初始自带：判据只是「耐久未满」，没有等级门槛。
   // 修复量本身仍是 repair.amount（溢出额度不限，但一次只加这么多）。
   if (!canRepairRod(state, target)) return state
-  const durability = Math.max(0, target.durability + restore)
+  const emergency = canEmergencyRepairRod(state, target)
+  const stopLine = autoStopThreshold({ ...state, rod: target })
+  const durability = emergency
+    ? Math.min(rodRepairCap(target), Math.max(80, stopLine))
+    : Math.max(0, target.durability + restore)
   const next = { ...target, durability, status: active ? 'active' : target.status === 'broken' ? 'stored' : target.status }
   const rods = state.rods.map((r) => r.id === rodId ? next : r)
   const rod = active ? next : state.rod
-  const selectedDepthId = active && !depthsFor(state).some((depth) => depth.id === state.fishing.selectedDepthId) ? depthsFor(state)[0].id : state.fishing.selectedDepthId
+  const reachable = depthsFor(state)
+  const selectedDepthId = active && (emergency || !reachable.some((depth) => depth.id === state.fishing.selectedDepthId))
+    ? reachable[0].id
+    : state.fishing.selectedDepthId
+  const lowDurability = durability < stopLine
+  const resetBite = emergency ? { phase: 'charging', bite: null, progress: 0, tension: 0, recoverUntil: 0, recoverFrom: 0, lastTickAt: at } : {}
   return {
     ...state,
     rods,
     rod,
-    inventory: { ...state.inventory, [material]: (state.inventory[material] || 0) - cost },
-    fishing: active ? { ...state.fishing, selectedDepthId, lowDurability: durability < LOW_DURABILITY_THRESHOLD, autoStopped: durability < LOW_DURABILITY_THRESHOLD ? Boolean(state.fishing.autoStopped) : false, manualResume: durability < LOW_DURABILITY_THRESHOLD ? state.fishing.manualResume : false, running: durability >= LOW_DURABILITY_THRESHOLD || Boolean(state.fishing.manualResume) } : state.fishing,
+    inventory: emergency ? state.inventory : { ...state.inventory, [material]: (state.inventory[material] || 0) - cost },
+    fishing: active ? { ...state.fishing, ...resetBite, selectedDepthId, lowDurability, autoStopped: lowDurability && Boolean(state.fishing.autoStopped), manualResume: lowDurability && Boolean(state.fishing.manualResume), running: !lowDurability || Boolean(state.fishing.manualResume) } : state.fishing,
   }
 }
 
@@ -5780,7 +5913,7 @@ export function machineUnlocked(state, machineId, config = state?.config) {
   const unlocked = Array.isArray(state?.unlockedDepths) && state.unlockedDepths.length ? state.unlockedDepths : STARTING_DEPTHS
   if (unlock.kind === 'blackMarket') {
     if (!blackMarketUnlocked(state, config)) return false
-    if (unlock.also === 'fx') return unlocked.includes('open') || unlocked.includes('deep') || unlocked.includes('rift') || unlocked.includes('abyss')
+    if (unlock.also === 'fx') return guideTabVisible(state, 'fx')
     return true
   }
   if (unlock.kind === 'depth') {
@@ -5914,6 +6047,7 @@ export function machineStatus(state, machineId, now = Date.now(), config = state
   const owned = state?.machines?.owned?.[machineId]
   if (!def || !owned) return 'off'
   if (!owned.on) return 'off'
+  if (machineId === 'watcher' && !state.machines.orders?.length) return 'empty'
   if (machineDepositSize(def, owned.deposit) <= 0) return 'empty'
   const rent = Math.max(0, Number(def.rent.daily) || 0)
   if (def.rent.unit === 'fishKg' && rent > 0 && (Number(owned.deposit.fishKg) || 0) < rent) return 'starving'
@@ -5990,6 +6124,31 @@ export function machineStop(state, machineId, now = Date.now(), config = state?.
     },
     code: null,
   }
+}
+
+export function machineOrderPlace(state, order, at, config = state?.config) {
+  const machineId = 'watcher'
+  if (!machineUnlocked(state, machineId, config)) return { state, code: 'MACHINE_LOCKED' }
+  if (!state.machines.owned[machineId]?.on) return { state, code: 'MACHINE_NOT_ON' }
+  const rules = machineDefFor(config, machineId).orders
+  const orders = state.machines.orders || []
+  if (orders.length >= rules.max) return { state, code: 'MACHINE_ORDER_LIMIT' }
+  const { id, name, side, price, qty } = order
+  const maxQty = side === 'buy' ? fxConfig(state).maxPosition : Math.max(fxConfig(state).maxPosition, fxPosition(state, name))
+  if (!id || !Object.hasOwn(TRAITS_BY_ID, name) || !['buy', 'sell'].includes(side) ||
+      !Number.isSafeInteger(price) || price < 1 || price > 1000000 ||
+      !Number.isSafeInteger(qty) || qty < 1 || qty > maxQty || !Number.isSafeInteger(price * qty)) {
+    return { state, code: 'MACHINE_ORDER_INVALID' }
+  }
+  const next = { id, name, side, price, qty, createdAt: at, expireAt: at + rules.ttlMs }
+  return { state: { ...state, machines: { ...state.machines, orders: [...orders, next] } }, code: null }
+}
+
+export function machineOrderCancel(state, orderId) {
+  const orders = state.machines?.orders || []
+  const remaining = orders.filter(({ id }) => id !== orderId)
+  if (remaining.length === orders.length) return { state, code: 'MACHINE_ORDER_MISSING' }
+  return { state: { ...state, machines: { ...state.machines, orders: remaining } }, code: null }
 }
 
 export function machineDepositFish(state, machineId, fishIds, now = Date.now(), config = state?.config) {
@@ -6323,7 +6482,10 @@ export function settleMachine(state, id, now = Date.now(), config = state?.confi
     const dayClose = fxDayClose(day, dayMs)
     const nextHour = dayStart + (Math.floor((cursor - dayStart) / MACHINE_HOUR_MS) + 1) * MACHINE_HOUR_MS
     const segEnd = Math.min(at, dayClose, nextHour)
-    current = runMachineSegment(current, id, cursor, segEnd, dayStart, day, config, def)
+    // 限价单在当前同步时按即时行情判断，不按离线时段的历史价格补撮合。
+    if (id !== 'watcher' || (segEnd === at && fxDayIndex(at, dayMs) === day)) {
+      current = runMachineSegment(current, id, cursor, segEnd, dayStart, day, config, def)
+    }
     cursor = segEnd
     cur = current.machines.owned[id]
     const nextCursor = Math.max(Number(cur.lastSettledAt) || 0, segEnd)
@@ -6387,7 +6549,7 @@ function runMachineSegment(state, id, fromMs, toMs, dayStart, day, config, def) 
   }
   owned = state.machines.owned[id]
   const items = completed * Math.max(1, machineModuleStats(owned, config).parallel)
-  const result = runMachineItems(state, id, owned, def, inOvertime ? 0 : items, inOvertime ? items : 0, fromMs, config)
+  const result = runMachineItems(state, id, owned, def, inOvertime ? 0 : items, inOvertime ? items : 0, id === 'watcher' ? toMs : fromMs, config)
   return result === state ? unpaid : result
 }
 
@@ -6416,7 +6578,7 @@ function machineHasWork(state, owned, def, config) {
       return Math.floor(Math.max(0, held - (Number(keep[name]) || 0)) / per) > 0
     })
   }
-  if (def.id === 'watcher') return (state.machines?.orders?.length || 0) > 0
+  if (def.id === 'watcher') return def.enabled && (state.machines?.orders?.length || 0) > 0
   return false
 }
 
@@ -6582,24 +6744,36 @@ function runWashItems(state, id, owned, def, count, config) {
 
 // 盯盘机：只读服务端报价，触价即调用既有的 fxBuy / fxSell，不接触任何未来价格。
 function runWatcherItems(state, id, owned, def, count, at, config) {
-  if (count <= 0) return state
+  if (count <= 0 || !fxCanTrade(state, at)) return state
   const orders = Array.isArray(state.machines?.orders) ? state.machines.orders : []
   if (!orders.length) return state
   let current = state
   let feePool = Number(owned.deposit?.coins) || 0
   let processed = 0
+  let spent = 0
+  const baseFee = machineFeePerItem(owned, config, false)
   const remaining = []
   for (const order of orders) {
-    if (processed >= count || feePool < Math.max(0, Number(def.fee.perItem) || 0)) { remaining.push(order); continue }
-    if (Number(order.expireAt) && at > Number(order.expireAt)) continue
+    if (processed >= count || Number(order.createdAt) > at || (Number(order.expireAt) > 0 && Number(order.expireAt) <= at) ||
+        !Object.hasOwn(TRAITS_BY_ID, order.name) ||
+        !['buy', 'sell'].includes(order.side) || !Number.isSafeInteger(order.qty) || order.qty < 1) {
+      remaining.push(order)
+      continue
+    }
     const quote = fxQuote(current, order.name, at)
-    if (!quote) { remaining.push(order); continue }
-    const hit = order.side === 'buy' ? quote.buy <= Number(order.price) : quote.sell >= Number(order.price)
-    if (!hit) { remaining.push(order); continue }
-    const next = order.side === 'buy' ? fxBuy(current, order.name, order.qty, at) : fxSell(current, order.name, order.qty, at)
-    if (next === current) { remaining.push(order); continue }
-    current = next
-    feePool -= Math.max(0, Number(def.fee.perItem) || 0)
+    const buying = order.side === 'buy'
+    const price = buying ? quote.buy : quote.sell
+    const hit = buying ? price <= Number(order.price) : price >= Number(order.price)
+    const fee = baseFee + Math.ceil(price * order.qty * def.fee.rateOfProceeds)
+    if (!hit || !Number.isFinite(fee) || feePool < fee) { remaining.push(order); continue }
+    const held = fxPosition(current, order.name)
+    const next = (buying ? fxBuy : fxSell)(current, order.name, order.qty, at)
+    // 市价交易允许部分成交，限价委托只接受全部份数。试算未完成时保留原快照。
+    if (Math.abs(fxPosition(next, order.name) - held) !== order.qty) { remaining.push(order); continue }
+    const [trade, ...history] = next.fx.trades
+    current = { ...next, fx: { ...next.fx, trades: [{ ...trade, source: 'watcher', orderId: order.id }, ...history] } }
+    feePool -= fee
+    spent += fee
     processed += 1
   }
   if (!processed) return state
@@ -6608,17 +6782,19 @@ function runWatcherItems(state, id, owned, def, count, at, config) {
     ...cur,
     deposit: { ...cur.deposit, coins: feePool },
     dayItems: (Number(cur.dayItems) || 0) + processed,
-    dayFee: (Number(cur.dayFee) || 0) + processed * Math.max(0, Number(def.fee.perItem) || 0),
-    stats: { ...cur.stats, totalItems: (Number(cur.stats?.totalItems) || 0) + processed },
+    dayFee: (Number(cur.dayFee) || 0) + spent,
+    stats: { ...cur.stats, totalItems: (Number(cur.stats?.totalItems) || 0) + processed, totalFee: (Number(cur.stats?.totalFee) || 0) + spent },
   }
   return { ...current, machines: { ...current.machines, orders: remaining, owned: { ...current.machines.owned, [id]: nextOwned } } }
 }
 
 // 一次同步里结算所有已开机的机器。纯函数，注入时钟。
 export function settleMachines(state, now = Date.now(), config = state?.config) {
+  const orders = state?.machines?.orders || []
+  const pending = orders.filter((order) => !(Number(order.expireAt) > 0) || Number(order.expireAt) > now)
+  let current = pending.length === orders.length ? state : { ...state, machines: { ...state.machines, orders: pending } }
   const owned = state?.machines?.owned
-  if (!owned || !Object.keys(owned).length) return state
-  let current = state
+  if (!owned || !Object.keys(owned).length) return current
   Object.keys(owned).forEach((id) => {
     if (!current.machines.owned[id]?.on) return
     current = settleMachine(current, id, now, config)

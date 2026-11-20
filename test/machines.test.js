@@ -6,9 +6,33 @@ import {
   machineDepositBlackCoins,
   machineUnlocked, machineStatus, machineModulesUnlocked, machineInstallModule, machineRemoveModule, moduleFits,
   workshopLocation, redactScratchFaces, blackBuy, machineSetKeep, hydrateState, machineDepositMax, normalizeConfig,
+  fxPosition, machineOrderCancel, machineOrderPlace,
 } from '../src/game.js'
 
 const at = (h, m = 0) => new Date(2026, 10, 19, h, m, 0).getTime()
+
+test('watcher cancels untouched orders and fills a matching limit order once', () => {
+  const start = at(10)
+  const state = createInitialState()
+  state.coins = 2000
+  state.unlockedDepths.push('open', 'deep')
+  state.guide.skipped = true
+  const powered = machineStart(state, 'watcher', start)
+  assert.equal(powered.code, null)
+  const funded = machineDepositCoins(powered.state, 'watcher', 500).state
+  const cancelled = machineOrderPlace(funded, { id: 'cancelled', name: 'swift', side: 'buy', price: 1, qty: 3 }, start)
+  assert.equal(cancelled.code, null)
+  assert.equal(cancelled.state.coins, funded.coins)
+  const removed = machineOrderCancel(cancelled.state, 'cancelled')
+  assert.equal(removed.code, null)
+  const submitted = machineOrderPlace(removed.state, { id: 'filled', name: 'swift', side: 'buy', price: 100, qty: 2 }, start)
+  assert.equal(submitted.code, null)
+  const settled = settleMachines(submitted.state, at(10, 1))
+  assert.equal(fxPosition(settled, 'swift'), 2)
+  assert.equal(settled.machines.orders.length, 0)
+  assert.equal(settled.fx.trades[0].orderId, 'filled')
+  assert.equal(fxPosition(settleMachines(settled, at(10, 2)), 'swift'), 2)
+})
 
 // 起手：刮开 50 张、鱼/币/卡都备齐的机器。
 function seeded({ scratch = 50, cards = 1000, fish = 100, coins = 20000, kg = 10 } = {}) {

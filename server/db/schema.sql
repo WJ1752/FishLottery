@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS world_config (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS world_config_history (
+  version      INTEGER PRIMARY KEY,
+  config       TEXT    NOT NULL,
+  published_at INTEGER NOT NULL
+);
+
 -- 全服共享行情：每天一根日线，买卖价由它推导。
 CREATE TABLE IF NOT EXISTS fx_days (
   symbol TEXT    NOT NULL,

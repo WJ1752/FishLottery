@@ -1,7 +1,35 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BASE_ENERGY_PER_SECOND, DEPTHS, ENERGY_PER_CATCH, RECOVERY_MS, RODS, advanceFishing, biteProgress, biteTiming, canUnlockDepth, chooseLottery, chooseLotteryBatch, createInitialState, depthForRod, depthsFor, discardRevealedScratch, exchangeFish, exchangeFishBatchByFilter, fishMatchesExchangeFilter, hitDistribution, loadState, quoteForFish, repairRod, revealScratch, rewardFor, rodStatsFrom, rollBite, scratchTypeFor, selectRod, speedUpgrade, toggleFishing, unlockDepth, upgradeCostAt, upgradeRod, warehouseCount } from '../src/game.js'
+import { BASE_ENERGY_PER_SECOND, DEPTHS, ENERGY_PER_CATCH, RECOVERY_MS, RODS, advanceDepthSurveys, advanceFishing, biteProgress, biteTiming, canUnlockDepth, chooseLottery, chooseLotteryBatch, claimDailyContract, createInitialState, depthForRod, depthSurvey, depthsFor, discardRevealedScratch, exchangeFish, exchangeFishBatchByFilter, fishMatchesExchangeFilter, hitDistribution, hydrateState, loadState, quoteForFish, refreshDailyContracts, repairRod, revealScratch, rewardFor, rodStatsFrom, rollBite, scratchTypeFor, selectRod, speedUpgrade, toggleFishing, unlockDepth, upgradeCostAt, upgradeRod, warehouseCount } from '../src/game.js'
 import { TENSION_DEFAULTS, aggregateTraitEffects, biteWeightFor, normalizeTrait, rarityLabel, tensionAt, tensionFillMs } from '../src/traits.js'
+
+test('daily contracts pay once and renew at midnight UTC', () => {
+  const at = Date.UTC(2026, 10, 21, 23, 59)
+  const nextDay = at + 60_000
+  const state = refreshDailyContracts(createInitialState(), at)
+  assert.equal(claimDailyContract(state, 'catch', at).code, 'CONTRACT_INCOMPLETE')
+  const eligible = { ...state, daily: { ...state.daily, progress: { ...state.daily.progress, catch: 8 } } }
+  const result = claimDailyContract(eligible, 'catch', at)
+  assert.equal(result.code, null)
+  assert.equal(result.state.coins, eligible.coins + 80)
+  assert.equal(result.state.inventory['浮木纤维'], eligible.inventory['浮木纤维'] + 1)
+  assert.equal(claimDailyContract(result.state, 'catch', at).code, 'CONTRACT_CLAIMED')
+  const renewed = refreshDailyContracts(hydrateState(result.state, at), nextDay)
+  assert.equal(renewed.daily.progress.catch, 0)
+  assert.equal(claimDailyContract(renewed, 'catch', nextDay).code, 'CONTRACT_INCOMPLETE')
+})
+
+test('the harbor survey unlocks a reliable path to the reef without a lottery win', () => {
+  const state = createInitialState()
+  const progress = DEPTHS.find(({ id }) => id === 'shelf').label
+  state.stats.fishByDepth[progress] = depthSurvey(state, 'open').target
+  const completed = advanceDepthSurveys(state)
+  assert.equal(completed.inventory['潮汐锁钥'], 2)
+  assert.ok(completed.rods.some(({ id }) => id === 'rod-azure'))
+  assert.equal(depthSurvey(completed, 'open').rewarded, true)
+  const reloaded = hydrateState(JSON.parse(JSON.stringify(completed)))
+  assert.strictEqual(advanceDepthSurveys(reloaded), reloaded)
+})
 
 // 合成一张彩票要消耗多张空白票（普通 3 / 高级 6 / 大师 10），
 // 这些用例只关心号码与状态，先补足空白票库存。
@@ -1741,8 +1769,10 @@ test('every guided step carries copy so the card is never empty', async () => {
     assert.ok(copy && copy.length > 10, `${id} 应有引导文案`)
   })
   assert.ok(guideStepCopy(config, 'rodGuide').length > 10)
-  // 刮刮乐那一步必须说清它是材料的主要来源
-  assert.match(guideStepCopy(config, 'scratch'), /材料的主要来源/)
+  // 入门介绍交代奖品类型和两种翻牌操作。
+  const scratch = guideStepCopy(config, 'scratch')
+  assert.match(scratch, /鱼币或强化材料/)
+  assert.match(scratch, /拖动.*直接翻牌/)
 })
 
 test('admin edits to the copy table win over the builtin text', async () => {

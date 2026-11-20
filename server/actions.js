@@ -2,13 +2,13 @@ import {
   blackAcknowledge, blackBuy, blackOwnsTheme, blackRefreshOrder, blackSellFish, blackSellMaterial,
   blackSuperPlan, blackSuperReveal,
   chooseLotteryBatch, claimAll, claimAllScratch, claimScratch, depthsFor, discardRevealedScratch,
-  advanceGuide, exchangeFish, exchangeFishBatch, exchangeFishBatchByFilter, fxBuy, fxSell, guideTabVisible, markGuideSeen, normalizeSettings, repairRod, revealScratch,
+  advanceDepthSurveys, advanceGuide, claimDailyContract, exchangeFish, exchangeFishBatch, exchangeFishBatchByFilter, fxBuy, fxSell, guideTabVisible, markGuideSeen, normalizeSettings, repairRod, revealScratch,
   machineClaim, machineDepositBlackCoins, machineDepositCards, machineDepositCoins,
-  machineDepositFish, machineInstallModule, machineRemoveModule, machineSetKeep, machineSetOvertime, machineStart, machineStop,
+  machineDepositFish, machineInstallModule, machineOrderCancel, machineOrderPlace, machineRemoveModule, machineSetKeep, machineSetOvertime, machineStart, machineStop,
   selectRod, skipGuide, syncGuideFocus, toggleFishing, unlockDepth, upgradeRod, upgradeWarehouse,
 } from '../src/game.js'
 import { HttpError, badRequest } from './http-util.js'
-import { cryptoRandom } from './lib/rng.js'
+import { cryptoRandom, randomId } from './lib/rng.js'
 import { now } from './lib/clock.js'
 import { appendFlow, diffFlows } from './services/market.js'
 import { batchEnd, batchIdAt, batchNumbers, batchRules, batchStart, registerBatch } from './services/lottery.js'
@@ -55,6 +55,9 @@ const MACHINE_ERROR_TEXT = {
   MACHINE_LOCKED: '机器还没解锁',
   MACHINE_ALREADY_ON: '这台机器已经开机了',
   MACHINE_NOT_ON: '这台机器还没开机',
+  MACHINE_ORDER_INVALID: '请选择有效的标的、方向、整数限价和份数',
+  MACHINE_ORDER_LIMIT: '已达到盯盘机的待处理委托上限',
+  MACHINE_ORDER_MISSING: '该委托已成交、到期或撤销',
   MACHINE_DEPOSIT_LIMIT: '超过该机器的预付上限',
   MACHINE_DEPOSIT_EMPTY: '没有可交付的东西',
   MACHINE_CARD_NOT_READY: '只能交付未刮开的刮刮乐',
@@ -105,7 +108,7 @@ const ACTIONS = {
 
   claimTickets: (state) => { assertTabUnlocked(state, 'lottery'); return claimAll(state, now()) },
 
-  revealScratch: (state, params) => { assertTabUnlocked(state, 'scratch'); return revealScratch(state, requireString(params.cardId, 'cardId'), cryptoRandom) },
+  revealScratch: (state, params, ctx) => { assertTabUnlocked(state, 'scratch'); return revealScratch(state, requireString(params.cardId, 'cardId'), cryptoRandom, ctx.at ?? now()) },
 
   claimScratch: (state, params) => { assertTabUnlocked(state, 'scratch'); return claimScratch(state, requireString(params.cardId, 'cardId'), now()) },
 
@@ -113,21 +116,29 @@ const ACTIONS = {
 
   discardScratch: (state) => { assertTabUnlocked(state, 'scratch'); return discardRevealedScratch(state) },
 
-  exchangeFish: (state, params) => { assertTabUnlocked(state, 'npc'); return exchangeFish(state, requireString(params.fishId, 'fishId'), now()) },
+  exchangeFish: (state, params, ctx) => { assertTabUnlocked(state, 'npc'); return exchangeFish(state, requireString(params.fishId, 'fishId'), ctx.at ?? now(), cryptoRandom) },
 
-  exchangeFishBatch: (state, params) => {
+  exchangeFishBatch: (state, params, ctx) => {
     assertTabUnlocked(state, 'npc')
     // 一键兑换只收筛选范围：整仓库的 fishId 会撑爆请求体，截断又会导致「只兑换了一部分」。
     if (params.filter !== undefined) {
-      return exchangeFishBatchByFilter(state, str(params.filter, 16) || '全部', now())
+      return exchangeFishBatchByFilter(state, str(params.filter, 16) || '全部', ctx.at ?? now(), cryptoRandom)
     }
     // 兼容显式 id 列表，但不再静默截断：要么全部结算，要么报错。
     const ids = Array.isArray(params.fishIds) ? params.fishIds.map((id) => str(id, 80)).filter(Boolean) : []
     if (!ids.length) throw badRequest('INVALID_ARGUMENT', '请选择要兑换的鱼')
-    return exchangeFishBatch(state, ids, now())
+    return exchangeFishBatch(state, ids, ctx.at ?? now(), cryptoRandom)
   },
 
-  repairRod: (state, params) => repairRod(state, requireString(params.rodId, 'rodId')),
+  claimDailyContract: (state, params, ctx) => {
+    const result = claimDailyContract(state, requireString(params.contractId, 'contractId'), ctx.at ?? now())
+    if (result.code === 'CONTRACT_CLAIMED') throw new HttpError(409, result.code, '今日这项委托奖励已领取')
+    if (result.code === 'CONTRACT_INCOMPLETE') throw new HttpError(409, result.code, '请先完成今日这项航务委托')
+    if (result.code) throw badRequest(result.code, '该航务委托已更新或不可用')
+    return result.state
+  },
+
+  repairRod: (state, params, ctx) => repairRod(state, requireString(params.rodId, 'rodId'), undefined, ctx.at ?? now()),
 
   upgradeRod: (state, params) => upgradeRod(state, requireString(params.rodId, 'rodId'), requireString(params.upgradeId, 'upgradeId')),
 
@@ -219,6 +230,25 @@ const ACTIONS = {
 
   machineStop: (state, params, ctx) => {
     const result = machineStop(state, requireString(params.machineId, 'machineId'), now(), blackConfig(state, ctx))
+    if (result.code) throw machineFail(result.code)
+    return result.state
+  },
+
+  machineOrderPlace: (state, params, ctx) => {
+    const order = {
+      id: randomId(12),
+      name: str(params.name, 64),
+      side: params.side,
+      price: params.price,
+      qty: params.qty,
+    }
+    const result = machineOrderPlace(state, order, ctx.at ?? now(), blackConfig(state, ctx))
+    if (result.code) throw machineFail(result.code)
+    return result.state
+  },
+
+  machineOrderCancel: (state, params) => {
+    const result = machineOrderCancel(state, requireString(params.orderId, 'orderId'))
     if (result.code) throw machineFail(result.code)
     return result.state
   },
@@ -317,7 +347,7 @@ export function applyAction(name, state, params = {}, ctx = {}) {
   // 动作本身可能刚好跨过一个解锁门槛（例如升了第一次天赋）。这里同步推进一次引导，
   // 让赠币/赠材料与页签在同一个响应里到位，不必等下一秒的 sync。
   const at = ctx.at ?? now()
-  const guided = advanceGuide(next, at)
+  const guided = advanceGuide(advanceDepthSurveys(next), at)
   const focused = syncGuideFocus(guided.state, at)
   return { state: focused, applied: true, flows: diffFlows(before, focused.fx?.today || {}), receipt: claimReceipt(name, state, focused) }
 }

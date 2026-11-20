@@ -3,11 +3,12 @@ import { join } from 'node:path'
 import { createRouter } from './router.js'
 import { HttpError, badRequest, clientIp, notFound, parseCookies, readJson, sendJson, sendStatic } from './http-util.js'
 import { SESSION_COOKIE, readSession } from './services/auth.js'
-import { authRoutes } from './routes/auth.js'
+import { authRoutes, setSessionCookie } from './routes/auth.js'
 import { gameRoutes } from './routes/game.js'
 import { adminRoutes } from './routes/admin.js'
 import { log } from './lib/logger.js'
 import { now } from './lib/clock.js'
+import { getServiceStatus } from './services/operations.js'
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -72,7 +73,7 @@ function checkCsrf(req) {
   }
 }
 
-export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000, staticDir = null }) {
+export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000, staticDir = null, telemetry = null }) {
   const router = createRouter()
   authRoutes(router)
   gameRoutes(router, { offlineCapMs })
@@ -82,11 +83,13 @@ export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000,
     try {
       const world = db.prepare('SELECT version FROM world_config WHERE id = 1').get()
       if (staticDir && (!world || !statSync(join(staticDir, 'index.html')).isFile())) return { status: 503, body: { ok: false } }
+      if (telemetry && !telemetry.ready()) return { status: 503, body: { ok: false } }
       return { status: 200, body: { ok: true } }
     } catch {
       return { status: 503, body: { ok: false } }
     }
   })
+  router.get('/api/status', () => ({ status: 200, body: getServiceStatus(db) }))
 
   const actionLimiter = createLimiter({ limit: 20, windowMs: 1000 })
   const generalLimiter = createLimiter({ limit: 120, windowMs: 1000 })
@@ -95,13 +98,19 @@ export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000,
   const handler = async (req, res) => {
     const started = Date.now()
     let pathname = ''
+    let route = ''
     const headers = { ...SECURITY_HEADERS }
     if (config.hsts) headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
     const finish = (status, extra = {}) => {
       Object.entries({ ...headers, ...extra }).forEach(([key, value]) => res.setHeader(key, value))
-      if (process.env.LOG_REQUESTS !== '0' && pathname.startsWith('/api/')) {
-        log.info('request', { method: req.method, path: pathname, status, ms: Date.now() - started })
+      if (pathname.startsWith('/api/') && pathname !== '/api/health') {
+        const ms = Date.now() - started
+        telemetry?.recordRequest(status, ms)
+        const logRequests = process.env.LOG_REQUESTS
+        if (logRequests === '1' || (logRequests !== '0' && (process.env.NODE_ENV !== 'production' || status >= 500 || ms >= 250))) {
+          log.info('request', { method: req.method, route: route || 'unmatched', status, ms })
+        }
       }
     }
 
@@ -138,6 +147,7 @@ export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000,
         res.setHeader('Allow', match.allow.join(', '))
         throw new HttpError(405, 'METHOD_NOT_ALLOWED', '方法不允许')
       }
+      route = match.pattern
 
       if (WRITE_METHODS.has(req.method)) {
         if (!checkCsrf(req)) throw new HttpError(403, 'CSRF', '请求来源校验失败')
@@ -152,7 +162,15 @@ export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000,
       const body = WRITE_METHODS.has(req.method) ? await readJson(req) : {}
       const cookies = parseCookies(req.headers.cookie)
       const token = cookies[SESSION_COOKIE]
-      const auth = readSession(db, token)
+      const auth = pathname === '/api/status' || pathname === '/api/health' ? null : readSession(db, token)
+      if (auth?.renewed) res.setHeader('Set-Cookie', setSessionCookie(token))
+      if (pathname === '/api/action' && auth) {
+        const service = getServiceStatus(db)
+        if (service.mode === 'maintenance') {
+          res.setHeader('Retry-After', '60')
+          throw new HttpError(503, 'MAINTENANCE', service.message, { service })
+        }
+      }
       const ctx = {
         db,
         req,
@@ -167,17 +185,23 @@ export function createApp({ db, config = {}, offlineCapMs = 12 * 60 * 60 * 1000,
         token,
         auth,
         config,
+        telemetry,
       }
       const result = await match.handler(ctx)
-      finish(result?.status || 200, result?.headers || {})
-      return sendJson(req, res, result?.status || 200, result?.body ?? {}, result?.headers || {})
+      const status = result?.status || 200
+      let payload = result?.body ?? {}
+      if (status === 200 && (pathname === '/api/bootstrap' || pathname === '/api/sync')) {
+        payload = { ...payload, service: getServiceStatus(db) }
+      }
+      finish(status, result?.headers || {})
+      return sendJson(req, res, status, payload, result?.headers || {})
     } catch (error) {
       if (res.destroyed) return
       if (error instanceof HttpError) {
         finish(error.status)
         return sendJson(req, res, error.status, { error: error.code, message: error.message, ...error.extra })
       }
-      log.error('unhandled', { path: pathname, message: error?.message, stack: String(error?.stack || '').split('\n').slice(0, 4) })
+      log.error('unhandled', { route: route || 'unmatched', message: error?.message, stack: String(error?.stack || '').split('\n').slice(0, 4) })
       finish(500)
       return sendJson(req, res, 500, { error: 'INTERNAL', message: '服务器内部错误' })
     }

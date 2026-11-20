@@ -10,6 +10,7 @@ import { backfillDraws, drawBatch, dueBatches, markBatchDrawn } from './services
 import { ensureCertificate } from './lib/tls.js'
 import { log } from './lib/logger.js'
 import { now } from './lib/clock.js'
+import { createTelemetry } from './services/operations.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const HOUR = 60 * 60 * 1000
@@ -42,7 +43,7 @@ export function readEnv(env = process.env) {
 }
 
 // 后台定时任务：开奖 + 行情结算。单实例部署，用 setInterval 就够。
-export function startJobs(db, { intervalMs = 30 * 1000 } = {}) {
+export function startJobs(db, { intervalMs = 30 * 1000, telemetry = null } = {}) {
   let nextCleanupAt = 0
   const tick = () => {
     const at = now()
@@ -58,7 +59,9 @@ export function startJobs(db, { intervalMs = 30 * 1000 } = {}) {
       backfillDraws(db, config, at)
       // 零点结算：即使没人在线，行情也会跨日推进。
       settleWorld(db, config, at)
+      telemetry?.recordJob('world', true)
     } catch (error) {
+      telemetry?.recordJob('world', false)
       log.error('job failed', { message: error?.message })
     }
     if (at >= nextCleanupAt) {
@@ -68,9 +71,12 @@ export function startJobs(db, { intervalMs = 30 * 1000 } = {}) {
           run(db, 'DELETE FROM login_challenges WHERE expires_at <= ?', at)
           run(db, 'DELETE FROM email_tokens WHERE created_at <= ?', at - HOUR)
           run(db, 'DELETE FROM reset_tokens WHERE created_at <= ?', at - HOUR)
+          run(db, 'DELETE FROM action_log WHERE created_at < ?', at - HOUR)
         })
         nextCleanupAt = at + HOUR
+        telemetry?.recordJob('cleanup', true)
       } catch (error) {
+        telemetry?.recordJob('cleanup', false)
         log.error('cleanup failed', { message: error?.message })
       }
     }
@@ -91,7 +97,7 @@ export function createGameServer(options = {}) {
   })
   const db = options.db || openDatabase(env.dbFile)
   try {
-    const app = createApp({ db, config: { hsts: env.hsts, trustProxyHops: env.trustProxyHops }, offlineCapMs: env.offlineCapMs, staticDir: env.staticDir })
+    const app = createApp({ db, config: { hsts: env.hsts, trustProxyHops: env.trustProxyHops }, offlineCapMs: env.offlineCapMs, staticDir: env.staticDir, telemetry: options.telemetry })
     const server = createServer({ cert: tls.cert, key: tls.key, requestTimeout: 30_000, headersTimeout: 10_000 }, app)
     return { db, server, env, tls }
   } catch (error) {
@@ -103,10 +109,9 @@ export function createGameServer(options = {}) {
 async function main() {
   const env = readEnv()
   log.info('starting', { port: env.port, dataDir: env.dataDir, staticDir: env.staticDir })
-  if (!existsSync(join(env.staticDir, 'index.html'))) {
-    log.warn('未找到前端构建产物，请先运行 npm run build', { staticDir: env.staticDir })
-  }
-  const { db, server, tls } = createGameServer(env)
+  if (!existsSync(join(env.staticDir, 'index.html'))) throw new Error('未找到前端构建产物，请先运行 npm run build')
+  const telemetry = createTelemetry()
+  const { db, server, tls } = createGameServer({ ...env, telemetry })
 
   if (tls.generated) {
     log.warn('已生成自签名证书，首次访问需在浏览器中手动信任', { cert: tls.certPath })
@@ -124,7 +129,7 @@ async function main() {
     db.close()
     throw error
   }
-  const stopJobs = startJobs(db)
+  const stopJobs = startJobs(db, { telemetry })
   server.on('error', (error) => log.error('server failed', { message: error?.message }))
   log.info(`深海鱼市已启动: https://localhost:${env.port}`)
 

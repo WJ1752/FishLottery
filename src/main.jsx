@@ -1,17 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FISHING_TOUR, GuideCard, GuideDeck, GuideNewBadge, pendingGuideCard, STEP_LABELS } from './guide.jsx'
 import { createRoot } from 'react-dom/client'
-import { Anchor, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, Coins, Fish, Gift, Hammer, HandCoins, LogOut, Menu, Moon, Package, Pause, Play, Scale, Settings2, ShieldCheck, Skull, SlidersHorizontal, Sparkles, Store, Sun, Ticket, TimerReset, TrendingUp, Unlock, Waves, X } from 'lucide-react'
-import { BASE_ENERGY_PER_SECOND, COIN, DEFAULT_THEME, DEPTHS, THEMES, SCRATCH_DEFAULT_SLOTS, SCRATCH_MIN_SLOTS, RECOVERY_MS, autoRepairRestore, autoRepairThreshold, autoStopThreshold, biteProgress, guideTabVisible, normalizeGuideConfig, canRepairRod, durabilityTensionFactor, DEPTH_PRODUCE, MATERIAL_SOURCE, guideStepCopy, hitDistribution, rewardFor, blackDailyQuota, blackFishEligible, blackFishValue, blackMarketUnlocked, blackOwnsTheme, canUnlockDepth, depthUnlockCost, depthsFor, fishMatchesExchangeFilter, fxConfig, fxPosition, nextDrawAt, normalizeSettings, scratchGridLayout, scratchPairedSlots, scratchRadius, scratchThreshold, ticketCostFor, upgradeCostAt, warehouseCapacity, warehouseCount, warehouseUpgradeCost, canUpgradeWarehouse, ENERGY_PER_CATCH, MATERIALS, MIN_DURABILITY, TRAITS, formatCountdown, lotteryTypeFor, quoteForFish, quoteLabel, rodConfigFor, scratchTypeFor, sortNumberedTickets, machineDefFor, machineUnlocked, machineStatus, machineShiftHours, machineFeePerItem, machineDepositMax, machineModuleStats, machineModules, machineModulesUnlocked, workshopLocation } from './game'
+import { Anchor, ArrowLeft, ArrowRight, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coins, Compass, Fish, Gift, Hammer, HandCoins, LogOut, Menu, Moon, Package, Pause, Play, Scale, Settings2, ShieldCheck, Skull, SlidersHorizontal, Sparkles, Store, Sun, Ticket, TimerReset, TrendingUp, Unlock, Waves, X } from 'lucide-react'
+import { BASE_ENERGY_PER_SECOND, COIN, DAILY_CONTRACTS, DEFAULT_THEME, DEPTHS, THEMES, SCRATCH_DEFAULT_SLOTS, SCRATCH_MIN_SLOTS, RECOVERY_MS, autoRepairRestore, autoRepairThreshold, autoStopThreshold, biteProgress, guideTabVisible, normalizeGuideConfig, canEmergencyRepairRod, canRepairRod, durabilityTensionFactor, guideStepCopy, hitDistribution, rewardFor, blackDailyQuota, blackFishEligible, blackFishValue, blackMarketUnlocked, blackOwnsTheme, canUnlockDepth, depthSurvey, depthUnlockCost, depthsFor, fishMatchesExchangeFilter, fxConfig, fxPosition, nextDrawAt, normalizeSettings, scratchGridLayout, scratchPairedSlots, scratchRadius, scratchThreshold, ticketCostFor, upgradeCostAt, warehouseCapacity, warehouseCount, warehouseUpgradeCost, canUpgradeWarehouse, ENERGY_PER_CATCH, MATERIALS, MIN_DURABILITY, TRAITS, formatCountdown, lotteryTypeFor, quoteForFish, quoteLabel, rodConfigFor, scratchTypeFor, sortNumberedTickets, machineDefFor, machineUnlocked, machineStatus, machineShiftHours, machineFeePerItem, machineDepositMax, machineModuleStats, machineModules, machineModulesUnlocked, workshopLocation } from './game'
 import { tensionAt } from './traits'
 import { api, setUnauthorizedHandler } from './api'
 import { LoginPage, RegisterPage, StepUpPage, TotpSetupPage } from './auth'
-import AdminPage from './admin'
 import { FxCandles, clampNum, decodeCandleRows, fmtPct, fmtPrice, fxGrainLabel } from './fx-chart'
+import { depthArt, fishArt, itemArt, locationArt } from './art'
+import FishCodex from './fish-codex.jsx'
 
 // 没有蜡烛时返回同一个空数组：稳定引用，避免下游 effect 因引用变化反复触发。
 const EMPTY_CANDLES = []
 import './styles.css'
+
+const AdminPage = lazy(() => import('./admin'))
 
 const NAV = [
   { id: 'fishing', label: '钓鱼', icon: Fish },
@@ -19,7 +22,7 @@ const NAV = [
   { id: 'scratch', label: '刮刮乐', icon: Gift },
   { id: 'fx', label: '深海FX', icon: TrendingUp },
   { id: 'npc', label: '潮汐商会', icon: Waves },
-  { id: 'stats', label: '中奖统计', icon: BarChart3 },
+  { id: 'stats', label: '航海日志', icon: BarChart3 },
   { id: 'admin', label: '管理后台', icon: Settings2 },
   { id: 'settings', label: '设置', icon: SlidersHorizontal },
 ]
@@ -45,6 +48,7 @@ function AuthGate() {
   const [phase, setPhase] = useState('loading')
   const [user, setUser] = useState(null)
   const [authNotice, setAuthNotice] = useState('')
+  const [service, setService] = useState(null)
 
   const checkSession = useCallback(async () => {
     setPhase('loading')
@@ -60,6 +64,11 @@ function AuthGate() {
   }, [])
 
   useEffect(() => { void checkSession() }, [checkSession])
+  useEffect(() => {
+    let active = true
+    api.status().then((current) => { if (active) setService(current) }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   const endSession = useCallback((message = '') => {
     setAuthNotice(message)
@@ -78,12 +87,12 @@ function AuthGate() {
     <div className="panel auth-card"><h1>连接失败</h1><p className="auth-subtitle" role="alert">{authNotice}</p>
       <button className="primary-button wide" onClick={checkSession}>重试连接</button></div>
   </div>
-  if (phase === 'login') return <LoginPage notice={authNotice} onAuthenticated={signIn} onSwitchToRegister={() => setPhase('register')} />
-  if (phase === 'register') return <RegisterPage onAuthenticated={signIn} onSwitchToLogin={() => setPhase('login')} />
-  return <GameApp user={user} onUserChange={setUser} onSignOut={signOut} onSessionExpired={expireSession} />
+  if (phase === 'login') return <LoginPage notice={authNotice} service={service} onAuthenticated={signIn} onSwitchToRegister={() => setPhase('register')} />
+  if (phase === 'register') return <RegisterPage service={service} onAuthenticated={signIn} onSwitchToLogin={() => setPhase('login')} />
+  return <GameApp user={user} initialService={service} onUserChange={setUser} onSignOut={signOut} onSessionExpired={expireSession} />
 }
 
-function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
+function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpired }) {
   const [me, setMe] = useState(null)
   // 深海FX 行情快照：服务端算好的报价 + 档位 + 蜡烛。
   // 客户端不再持有 days/today/bins，也就无法在本地复算价格。
@@ -101,6 +110,7 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
   const [bootError, setBootError] = useState('')
   const [busy, setBusy] = useState(false)
   const [disconnected, setDisconnected] = useState(false)
+  const [service, setService] = useState(initialService)
   // 记住进黑市前停在哪个鱼市页面，品牌锁返回时恢复。
   const lastFishTabRef = useRef('fishing')
   const actionPending = useRef(false)
@@ -116,6 +126,7 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
   }, [onSessionExpired])
 
   const applySnapshot = useCallback((data) => {
+    if (data.service) setService((current) => Number(data.service.version) < Number(current?.version) ? current : data.service)
     const previous = cursor.current
     const version = Number(data.meVersion) || 0
     const serverTime = Number(data.serverTime) || 0
@@ -223,6 +234,7 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
   const blackMode = isBlackTab(activeTab)
   const blackUnlocked = Boolean(me && config && blackMarketUnlocked({ unlockedDepths: me.unlockedDepths }, config))
   const blackIntroSeen = Boolean(me?.blackMarket?.introSeen)
+  const maintaining = service?.mode === 'maintenance'
   const flash = useCallback((message, error = false) => {
     if (!message) return
     window.clearTimeout(noticeTimer.current)
@@ -242,6 +254,10 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
   }
 
   const send = useCallback(async (action, params = {}, message = '') => {
+    if (maintaining) {
+      flash(service?.message || '游戏维护中，请稍后再试。', true)
+      return null
+    }
     if (actionPending.current) return null
     actionPending.current = true
     setBusy(true)
@@ -259,13 +275,13 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
       actionPending.current = false
       setBusy(false)
     }
-  }, [applySnapshot, flash])
+  }, [applySnapshot, flash, maintaining, service?.message])
 
   const setTheme = (id) => send('setTheme', { theme: id })
-  const enterBlack = () => {
+  const enterBlack = (nextTab = 'black-buy') => {
     if (!blackUnlocked) return
     if (!isBlackTab(activeTab)) lastFishTabRef.current = activeTab
-    setActiveTab('black-buy')
+    setActiveTab(nextTab)
     setMobileNav(false)
     // 首次进入才写标记；之后品牌锁不再闪紫光。动作幂等，失败也不阻塞切换。
     if (!blackIntroSeen) send('blackAcknowledge')
@@ -294,7 +310,7 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
   const isAdminUser = user.role === 'admin'
   useEffect(() => {
     if (!me || !config) return
-    if (blackMode) return
+    if (blackMode || activeTab === 'stats') return
     if ((activeTab === 'admin' && !isAdminUser) || !guideTabVisible({ ...me, config }, activeTab)) setActiveTab('fishing')
   }, [blackMode, activeTab, isAdminUser, guideStage, guideSkipped, me, config])
 
@@ -318,52 +334,53 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
     configVersion,
   }
   const readyClaim = (me.tickets || []).filter((ticket) => ticket.status === 'DRAWN' && !ticket.claimed).length
+  const selectedPage = [...NAV, ...BLACK_NAV].find((item) => item.id === activeTab)
   const isAdmin = user.role === 'admin'
   // 逐个解锁：鱼市导航只露出已解锁的页签（admin 由角色决定，不参与引导）。
-  const visibleNav = NAV.filter((item) => (item.id === 'admin' ? isAdmin : guideTabVisible(state, item.id)))
+  const visibleNav = NAV.filter((item) => (item.id === 'admin' ? isAdmin : item.id === 'stats' || guideTabVisible(state, item.id)))
   const guideCard = pendingGuideCard(state)
 
   return <div className={cn('app-shell', blackMode && 'is-black')}>
     <aside className={cn('sidebar', mobileNav && 'sidebar-open')}>
       <div className="brand-lockup">
-        <button
-          type="button"
-          className={cn('brand-switch', blackMode && 'is-black', !blackMode && blackUnlocked && !blackIntroSeen && 'has-intro')}
-          disabled={!blackUnlocked && !blackMode}
-          aria-label={blackMode ? '返回深海鱼市' : blackUnlocked ? '进入无灯黑市' : '深海鱼市'}
-          title={blackMode ? '返回深海鱼市' : blackUnlocked ? '进入无灯黑市' : undefined}
-          onClick={blackMode ? exitBlack : enterBlack}
-        >
+        <div className={cn('brand-switch', blackMode && 'is-black')}>
           <div className="brand-mark">{blackMode ? <Skull size={20} strokeWidth={2.1} /> : <Anchor size={20} strokeWidth={2.2} />}</div>
           <div className="brand-copy"><strong>{blackMode ? '无灯黑市' : '深海鱼市'}</strong></div>
-          {blackMode && <ChevronLeft className="brand-back" size={15} aria-hidden="true" />}
-        </button>
+        </div>
         <button className="mobile-close" aria-label="关闭导航" title="关闭导航" onClick={() => setMobileNav(false)}><X size={18} /></button>
       </div>
-      <nav className="primary-nav">
+      <nav className="primary-nav" aria-label={blackMode ? '无灯黑市' : '鱼市导航'}>
         {(blackMode ? BLACK_NAV : visibleNav).map(({ id, label, icon: Icon }) => <button key={id} className={cn('nav-item', activeTab === id && 'nav-item-active')} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { if (!isBlackTab(id)) lastFishTabRef.current = id; setActiveTab(id); setMobileNav(false) }}>
           <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 1.8} /><span className="nav-copy"><b>{label}</b></span>{!blackMode && id === 'lottery' && readyClaim > 0 ? <span className="nav-badge" aria-label={`${readyClaim} 张待兑奖`}>{readyClaim}</span> : <><GuideNewBadge state={state} tabId={id} /><ChevronRight className="nav-arrow" size={15} aria-hidden="true" /></>}
         </button>)}
+        {(blackUnlocked || blackMode) && <button className={cn('nav-item market-switch', !blackMode && !blackIntroSeen && 'has-intro')} onClick={blackMode ? exitBlack : () => enterBlack()}>
+          {blackMode ? <ArrowLeft size={17} /> : <Skull size={17} />}<span className="nav-copy"><b>{blackMode ? '返回鱼市' : '进入无灯黑市'}</b></span>
+          {!blackMode && <ChevronRight className="nav-arrow" size={15} aria-hidden="true" />}
+        </button>}
       </nav>
       <div className="sidebar-spacer" />
       <div className="sidebar-footer">
-        <div className="sync-row"><span className="live-dot" /><span>{user.username}</span>{user.totpEnabled && <ShieldCheck size={12} aria-label="已启用两步验证" />}</div>
+        <div className="sync-row"><span className="profile-mark" aria-hidden="true">{user.username?.slice(0, 1).toUpperCase()}</span><span>{user.displayName || user.username}</span>{user.totpEnabled && <ShieldCheck size={12} aria-label="已启用两步验证" />}</div>
         <button className="reset-button" onClick={signOut}><LogOut size={14} /> 退出登录</button>
       </div>
     </aside>
     {mobileNav && <button className="mobile-scrim" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
     <main className="main-content">
       <header className="topbar">
-        <button className="mobile-menu" aria-label="打开导航" title="打开导航" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}><Menu size={20} /></button>
+        <div className="top-location">
+          <button className="mobile-menu" aria-label="打开导航" title="打开导航" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}><Menu size={20} /></button>
+          <span className="top-location-name">{blackMode ? '无灯黑市' : '深海鱼市'}<ChevronRight size={13} aria-hidden="true" /><b>{selectedPage?.label}</b></span>
+        </div>
         <div className="top-actions">
           {blackMode
-            ? <div className="coin-chip coin-chip-black" title="渔币余额"><span className="coin-glyph" aria-hidden="true">{BLACK_COIN_ICON}</span><b>{(me.blackMarket?.coins || 0).toLocaleString('zh-CN')}</b></div>
-            : <div className="coin-chip" title="鱼币余额"><Coins size={14} /><b>{(me.coins || 0).toLocaleString('zh-CN')}</b></div>}
+            ? <div className="coin-chip coin-chip-black" title="渔币余额"><ItemIllustration item="渔币" fallback={<Coins size={15} />} /><b>{(me.blackMarket?.coins || 0).toLocaleString('zh-CN')}</b><span className="coin-unit">渔币</span></div>
+            : <div className="coin-chip" title="鱼币余额"><ItemIllustration item="鱼币" fallback={<Coins size={15} />} /><b>{(me.coins || 0).toLocaleString('zh-CN')}</b><span className="coin-unit">鱼币</span></div>}
           <div className="server-chip" title="服务器时间"><span className="live-dot" /> <b>{new Date(now).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</b></div>
         </div>
       </header>
       <div className="page-wrap">
         {disconnected && <p className="auth-error connection-status" role="status">与服务器的连接中断，正在重连。存档同步后会更新。</p>}
+        {(service?.message || maintaining) && <div className={cn('service-bulletin', maintaining && 'service-paused')} role="status"><strong>{maintaining ? '维护中' : '港口公告'}</strong><span>{service.message || '游戏操作已暂停。'}</span></div>}
         {notice && <div className={cn('toast', notice.error && 'toast-error')} role={notice.error ? 'alert' : 'status'}><Sparkles size={16} />{notice.message}</div>}
         {guideCard && <GuideCard
           key={guideCard.stepId}
@@ -381,19 +398,21 @@ function GameApp({ user, onUserChange, onSignOut, onSessionExpired }) {
         {activeTab === 'black-buy' && blackMode && <BlackBuyPage state={state} onAction={send} busy={busy} />}
         {activeTab === 'black-super' && blackMode && <BlackSuperPage state={state} onAction={send} busy={busy} />}
         {activeTab === 'black-shop' && blackMode && <BlackShopPage state={state} onAction={send} busy={busy} />}
-        {activeTab === 'black-workshop' && blackMode && <Workshop state={state} onAction={send} />}
-        {activeTab === 'fishing' && <FishingPage state={state} busy={busy} clockOffset={clockOffset} onOpenDrawer={() => setDrawer(true)} onOpenDepths={() => setDepthOverlay(true)} onOpenMerchant={() => setActiveTab('npc')} onToggle={() => send('toggleFishing')} onGuideSeen={markGuideSeen} onGuideSkip={skipAllGuide} />}
-        {activeTab === 'lottery' && <LotteryPage state={state} now={now} onAction={send} lottery={lottery} busy={busy} />}
-        {activeTab === 'scratch' && <ScratchPage state={state} onAction={send} onGuideSeen={markGuideSeen} busy={busy} />}
-        {activeTab === 'fx' && <FxPage state={state} onAction={send} fxSnapshot={fxSnapshot} busy={busy} />}
+        {activeTab === 'black-workshop' && blackMode && <Workshop state={state} onAction={send} busy={busy || maintaining} />}
+        {activeTab === 'fishing' && <FishingPage state={state} busy={busy || maintaining} now={now} clockOffset={clockOffset} onOpenDrawer={() => setDrawer(true)} onOpenDepths={() => setDepthOverlay(true)} onOpenMerchant={() => setActiveTab('npc')} onToggle={() => send('toggleFishing')} onGuideSeen={markGuideSeen} onGuideSkip={skipAllGuide} onAction={send} />}
+        {activeTab === 'lottery' && <LotteryPage state={state} now={now} onAction={send} lottery={lottery} busy={busy || maintaining} />}
+        {activeTab === 'scratch' && <ScratchPage state={state} onAction={send} onGuideSeen={markGuideSeen} busy={busy || maintaining} onOpenWorkshop={blackUnlocked ? () => enterBlack('black-workshop') : null} />}
+        {activeTab === 'fx' && <FxPage state={state} onAction={send} fxSnapshot={fxSnapshot} busy={busy || maintaining} />}
         {activeTab === 'npc' && <NpcPage state={state} onAction={send} />}
         {activeTab === 'stats' && <StatsPage state={state} />}
-        {activeTab === 'admin' && isAdmin && <AdminPage user={user} onUserChange={onUserChange} config={config} configVersion={configVersion} onConfigSaved={applySavedConfig} onSignOut={onSignOut} />}
+        {activeTab === 'admin' && isAdmin && <Suspense fallback={<p className="panel admin-loading" role="status">正在加载管理后台…</p>}>
+          <AdminPage user={user} onUserChange={onUserChange} config={config} configVersion={configVersion} onConfigSaved={applySavedConfig} onSignOut={onSignOut} />
+        </Suspense>}
         {activeTab === 'settings' && <SettingsPage state={state} user={user} onAction={send} onSetTheme={setTheme} onUserChange={onUserChange} onProgressReset={applyProgressReset} />}
       </div>
     </main>
-    {drawer && <DurabilityDrawer state={state} onClose={() => setDrawer(false)} onAction={send} />}
-    {depthOverlay && <SeaSelectorOverlay state={state} onClose={() => setDepthOverlay(false)} onSelect={async (depthId) => {
+    {drawer && <DurabilityDrawer state={state} busy={busy || maintaining} onClose={() => setDrawer(false)} onAction={send} />}
+    {depthOverlay && <SeaSelectorOverlay state={state} busy={busy || maintaining} onClose={() => setDepthOverlay(false)} onSelect={async (depthId) => {
       if (await send('selectDepth', { depthId }, '海域已切换')) setDepthOverlay(false)
     }} onUnlock={(depthId) => send('unlockDepth', { depthId }, '海域已解锁')} />}
   </div>
@@ -427,7 +446,49 @@ function Pager({ page, pageCount, setPage, total, pageSize }) {
   </nav>
 }
 
-function PageHeader({ title, action }) { return <div className="page-header"><div><h1>{title}</h1></div>{action}</div> }
+function PageHeader({ title, description, art, action }) {
+  return <header className={cn('page-header', art && 'location-banner')}>
+    {art && <img className="location-art" alt="" src={locationArt(art)} loading="lazy" decoding="async" />}
+    <div className="page-heading"><h1>{title}</h1>{description && <p>{description}</p>}</div>
+    {action && <div className="page-header-action">{action}</div>}
+  </header>
+}
+
+function ItemIllustration({ item, fallback = null }) {
+  const src = itemArt(item)
+  return <span className="item-illustration" aria-hidden="true">{src ? <img alt="" src={src} loading="lazy" decoding="async" /> : fallback}</span>
+}
+
+function FishPortrait({ fish, large = false }) {
+  const src = fishArt(fish)
+  return <span className={cn('fish-portrait', large && 'fish-portrait-large')} aria-hidden="true">
+    {src ? <img alt="" src={src} loading="lazy" decoding="async" /> : <Fish size={large ? 26 : 18} />}
+  </span>
+}
+
+function GameDialog({ title, onClose, className = '', closeLabel = '关闭', children }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    const dialog = ref.current
+    dialog.showModal()
+    return () => { if (dialog.open) dialog.close() }
+  }, [])
+
+  return <dialog ref={ref} className={cn('game-dialog', className)} aria-label={title} onCancel={(event) => {
+    event.preventDefault()
+    onClose()
+  }} onClick={(event) => {
+    if (event.target !== event.currentTarget || event.detail === 0) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose()
+  }}>
+    <header className="game-dialog-head">
+      <h2>{title}</h2>
+      <button className="icon-button" type="button" onClick={onClose} aria-label={closeLabel}><X size={19} /></button>
+    </header>
+    {children}
+  </dialog>
+}
 function Metric({ label, value, helper, tone = 'default', onClick, chevron = false }) {
   const content = <>
     <span className="metric-label">{label}{chevron && <ChevronRight size={14} aria-hidden="true" />}</span>
@@ -504,7 +565,7 @@ function fishingFrame(state, at) {
   }
 }
 
-function FishingPage({ state, busy, clockOffset, onOpenDrawer, onOpenDepths, onOpenMerchant, onToggle, onGuideSeen, onGuideSkip }) {
+function FishingPage({ state, busy, now, clockOffset, onOpenDrawer, onOpenDepths, onOpenMerchant, onToggle, onGuideSeen, onGuideSkip, onAction }) {
   const rod = state.rod
   const bite = state.fishing.bite
   const rate = Math.round(Number.isFinite(Number(rod.energyPerSecond)) ? Math.max(1, Number(rod.energyPerSecond)) : BASE_ENERGY_PER_SECOND)
@@ -578,7 +639,21 @@ function FishingPage({ state, busy, clockOffset, onOpenDrawer, onOpenDepths, onO
   const tourMinCloseMs = tourStep?.minCloseMs ?? guideConfig.minCloseMs
   const tourFocusAt = Number(guideState.focus?.tension?.at)
   const merchantAvailable = guideTabVisible(state, 'npc')
+  const reelDisabled = busy || broken || (warehouseIsFull && !state.fishing.running)
   return <>
+    <header className="fishing-scene">
+      <img className="fishing-scene-image" src={depthArt(selectedDepth.id)} alt="" fetchPriority="high" decoding="async" />
+      <div className="fishing-scene-content">
+        <div>
+          <h1>钓鱼</h1>
+          <button className="scene-region" onClick={onOpenDepths} aria-label={`选择钓鱼海域，当前为${selectedDepth.label}`}><Compass size={17} /><span>{selectedDepth.label}</span><ChevronRight size={15} aria-hidden="true" /></button>
+        </div>
+        <div className="scene-control">
+          <StatusPill tone={statusTone}>{statusText}</StatusPill>
+          <button className={cn('primary-button', state.fishing.running && 'scene-pause')} disabled={reelDisabled} onClick={onToggle}>{state.fishing.running ? <Pause size={16} /> : <Play size={16} />}{toggleLabel}</button>
+        </div>
+      </div>
+    </header>
     {tourOpen && <GuideDeck
       title="钓鱼页导览"
       pages={FISHING_TOUR.map((page) => page.anchor === 'tension' ? { ...page, text: guideStepCopy(guideConfig, tourStep) || page.text } : page)}
@@ -599,13 +674,9 @@ function FishingPage({ state, busy, clockOffset, onOpenDrawer, onOpenDepths, onO
       onSeen={onGuideSeen}
       icon={<Anchor size={16} />}
     />}
-    <PageHeader title="钓鱼" action={<button className={cn('primary-button', state.fishing.running ? 'button-quiet' : '')} disabled={busy || broken || (warehouseIsFull && !state.fishing.running)} onClick={onToggle}>{state.fishing.running ? <><Pause size={16} /> {toggleLabel}</> : <><Play size={16} /> {toggleLabel}</>}</button>} />
     <div className="fishing-layout">
-      <section className="panel fishing-panel">
-        <div className="panel-topline">
-          <button className="depth-picker" onClick={onOpenDepths} aria-label="选择钓鱼海域"><span className="depth-current-icon" style={{ color: selectedDepth.color }}>{selectedDepth.icon}</span><span className="depth-current-name">{selectedDepth.label}</span><ChevronRight size={15} aria-hidden="true" /></button>
-          <StatusPill tone={statusTone}>{statusText}</StatusPill>
-        </div>
+      <section className="panel fishing-panel" aria-label="垂钓实况">
+        <div className="fishing-panel-heading"><h2>垂钓实况</h2><span>{rod.name}</span></div>
         <div className="progress-stage">
           <div className="progress-label"><span>钓鱼进度</span><strong>{progressPercent}%</strong></div>
           <div ref={trackRef} className={cn('progress-track', reeling && 'progress-track-reel', localPending && (predicted === 'caught' ? 'is-settled-catch' : 'is-settled-escape'))} role="progressbar" aria-label="钓鱼进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPercent}>
@@ -617,185 +688,75 @@ function FishingPage({ state, busy, clockOffset, onOpenDrawer, onOpenDepths, onO
         {lowDurability && !broken && !state.fishing.running && <div className="durability-warning"><Hammer size={15} /><span>耐久 {Math.round(rod.durability)} · 低于 {Math.round(autoStopThreshold(state))} 自动停钓</span><button className="text-button" onClick={onOpenDrawer}>修复钓竿</button></div>}
         {broken && <div className="durability-warning danger"><Hammer size={15} /><span>耐久耗尽</span><button className="text-button" onClick={onOpenDrawer}>修复钓竿</button></div>}
         {autoRepairTrigger > 0 && <div className="durability-warning auto"><Hammer size={15} /><span>自动维修 · 低于 {Math.round(autoRepairTrigger)} · +{Math.round(autoRepairAmount * 100)}%</span></div>}
-        <div className={cn('catch-summary', localPending && 'is-pending')}><div className="summary-head"><div><h3>{localPending ? '结算中…' : last ? last.fish.name : '等待首次鱼获'}</h3></div>{last && !localPending && <StatusPill tone={last.escaped ? 'warning' : 'success'}>{last.escaped ? '脱钩' : '已入库'}</StatusPill>}</div>{localPending ? null : last ? <>
+        <div className={cn('catch-summary', localPending && 'is-pending')}><div className="summary-head">
+          <div className="catch-identity">{last && !localPending && <FishPortrait fish={last.fish} large />}<div><h3>{localPending ? '确认鱼获中…' : last ? last.fish.name : '等待首次鱼获'}</h3>{last && !localPending && <span>{last.fish.latin}</span>}</div></div>
+          {last && !localPending && <StatusPill tone={last.escaped ? 'warning' : 'success'}>{last.escaped ? '脱钩' : '已入库'}</StatusPill>}
+        </div>{localPending ? null : last ? <>
           <div className="catch-detail-grid"><div><span>海域</span><b style={{ color: last.fish.depthColor }}>{last.fish.depth}</b></div><div><span>鱼重</span><b>{last.fish.weight} kg</b></div><div><span>耐久损失</span><b className={last.loss > 0 ? 'danger-text' : 'success-text'}>{last.loss > 0 ? `-${last.loss}` : '无'}</b></div></div>
           <div className="catch-traits trait-tags">{last.fish.traits.map((id) => { const trait = traitOf(id); return <span key={id} style={{ color: trait?.color }}>{trait?.icon} {trait?.label}</span> })}</div>
-        </> : null}</div>
+        </> : <p className="catch-empty-tip">首次钓到鱼后，即可去潮汐商会兑换奖励。</p>}</div>
         <div className="fishing-actions">
-          <button className="secondary-button" onClick={onOpenDrawer} data-guide-anchor="durability"><Hammer size={15} /> 钓竿 · {Math.round(rod.durability / rod.maxDurability * 100)}%</button>
-          {merchantAvailable && <button className="secondary-button" onClick={onOpenMerchant}><Package size={15} /> 去商会兑换 · {fishCount}/{fishCapacity}</button>}
+          <button className="secondary-button" onClick={onOpenDrawer} data-guide-anchor="durability"><ItemIllustration item={rod} fallback={<Hammer size={16} />} /> 钓竿与强化 <b>{Math.round(rod.durability / rod.maxDurability * 100)}%</b></button>
+          {merchantAvailable && <button className="secondary-button" onClick={onOpenMerchant}><Package size={16} /> 去商会兑换 <b>{fishCount}/{fishCapacity}</b></button>}
         </div>
       </section>
-      <aside className="rod-card rod-card-compact" onClick={onOpenDrawer} role="button" tabIndex={0} aria-label="查看钓竿数值与强化" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenDrawer() } }}>
-        <div className="durability-track-vertical" title={`耐久 ${rod.durability}/${rod.maxDurability}`} role="progressbar" aria-label="钓竿耐久度" aria-valuemin="0" aria-valuemax={rod.maxDurability} aria-valuenow={rod.durability} style={{ '--durability-color': lowDurability ? '#b45e5d' : '#247b82' }}><div style={{ height: `${(rod.durability / rod.maxDurability) * 100}%`, background: lowDurability ? '#b45e5d' : '#247b82' }} /></div>
-      </aside>
+      <DailyContracts daily={state.daily} now={now} busy={busy} onAction={onAction} />
     </div>
-    <div className="section-row"><div><h2>脱钩</h2></div></div><div className="catch-table panel">{recentEscapes.map((fish) => <div className="catch-row" key={`${fish.id}-${fish.escapedAt}`}><div className="fish-orb" style={{ '--fish-color': fish.depthColor }}><Fish size={16} /></div><div className="catch-name"><strong>{fish.name}</strong><span>{fish.latin} · {fish.depth}</span></div><div className="trait-tags">{fish.traits.slice(0, 4).map((id) => { const trait = traitOf(id); return <span key={id} style={{ color: trait?.color }}>{trait?.icon} {trait?.label}</span> })}</div><div className="catch-rarity">{fish.rarity}</div><div className="catch-loss">-{fish.loss}</div><div className="catch-time">{fmtTime(fish.escapedAt || fish.caughtAt)}</div></div>)}{!recentEscapes.length && <EmptyState icon={Fish} title="暂无记录" />}</div>
+    <details className="catch-log panel">
+      <summary>脱钩记录<span>{recentEscapes.length} 条</span></summary>
+      <div className="catch-table">{recentEscapes.map((fish) => <div className="catch-row" key={`${fish.id}-${fish.escapedAt}`}><FishPortrait fish={fish} /><div className="catch-name"><strong>{fish.name}</strong><span>{fish.latin} · {fish.depth}</span></div><div className="trait-tags">{fish.traits.slice(0, 4).map((id) => { const trait = traitOf(id); return <span key={id} style={{ color: trait?.color }}>{trait?.icon} {trait?.label}</span> })}</div><div className="catch-rarity">{fish.rarity}</div><div className="catch-loss">-{fish.loss}</div><div className="catch-time">{fmtTime(fish.escapedAt || fish.caughtAt)}</div></div>)}{!recentEscapes.length && <EmptyState icon={Fish} title="还没有脱钩记录" />}</div>
+    </details>
   </>
 }
 
-// 拖拽轮播：海域选择与刮刮乐选择共用同一套手势、吸附与延时确认逻辑。
-// 除了拖拽，还支持滚轮步进和点击卡片切换，三种方式都走同一套吸附 + 延时确认。
-function useCarousel({ total, initialIndex = 0, canPick, onPick, onClose }) {
-  const [position, setPosition] = useState(Math.max(0, initialIndex))
-  const [dragging, setDragging] = useState(false)
-  const positionRef = useRef(Math.max(0, initialIndex))
-  const dragRef = useRef({ active: false, startX: 0, startPosition: 0, step: 240, moved: false })
-  const clickGuardRef = useRef(0)
-  const viewportRef = useRef(null)
-  const pickTimerRef = useRef(null)
-  const wheelRef = useRef({ accum: 0, stepped: false, timer: null })
-  const latest = useRef({ canPick, onPick, onClose })
-  latest.current = { canPick, onPick, onClose }
-
-  const moveTo = (value) => { positionRef.current = value; setPosition(value) }
-
-  const schedulePick = (index, delay) => {
-    if (!total) return
-    const normalized = ((index % total) + total) % total
-    if (!latest.current.canPick?.(normalized)) return
-    window.clearTimeout(pickTimerRef.current)
-    pickTimerRef.current = window.setTimeout(() => latest.current.onPick?.(normalized), delay)
-  }
-
-  // 点击或拖拽开始时取消滚轮待确认的选择，避免两种手势互相抢选择权。
-  const cancelWheel = () => {
-    window.clearTimeout(wheelRef.current.timer)
-    wheelRef.current.timer = null
-    wheelRef.current.accum = 0
-    wheelRef.current.stepped = false
-  }
-
-  useEffect(() => {
-    const onMove = (event) => {
-      const drag = dragRef.current
-      if (!drag.active) return
-      const delta = event.clientX - drag.startX
-      if (Math.abs(delta) > 5) drag.moved = true
-      if (drag.moved) moveTo(drag.startPosition - delta / drag.step)
-    }
-    const onEnd = () => {
-      const drag = dragRef.current
-      if (!drag.active) return
-      dragRef.current = { active: false, startX: 0, startPosition: 0, step: 240, moved: false }
-      setDragging(false)
-      if (!drag.moved) return
-      clickGuardRef.current = Date.now()
-      const snapped = Math.round(positionRef.current)
-      moveTo(snapped)
-      schedulePick(snapped, 460)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onEnd)
-    window.addEventListener('pointercancel', onEnd)
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onEnd)
-      window.removeEventListener('pointercancel', onEnd)
-      window.clearTimeout(pickTimerRef.current)
-    }
-  }, [])
-
-  // 滚轮切换：一次滚动只推进一张，停手后再吸附并确认，
-  // 避免快速划过中间卡片时每张都触发一次选择。
-  useEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    const handleWheel = (event) => {
-      if (!total || event.ctrlKey || dragRef.current.active) return
-      const dominant = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
-      if (!dominant) return
-      // deltaMode: 0 像素 / 1 行 / 2 页，先折算成像素再累加，鼠标和触控板的手感才一致。
-      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1
-      event.preventDefault()
-      window.clearTimeout(pickTimerRef.current)
-      const wheel = wheelRef.current
-      wheel.accum += dominant * scale
-      if (Math.abs(wheel.accum) >= 40) {
-        moveTo(Math.round(positionRef.current) + (wheel.accum > 0 ? 1 : -1))
-        wheel.accum = 0
-        wheel.stepped = true
-      }
-      window.clearTimeout(wheel.timer)
-      wheel.timer = window.setTimeout(() => {
-        wheel.accum = 0
-        if (!wheel.stepped) return
-        wheel.stepped = false
-        const snapped = Math.round(positionRef.current)
-        moveTo(snapped)
-        schedulePick(snapped, 320)
-      }, 240)
-    }
-    viewport.addEventListener('wheel', handleWheel, { passive: false })
-    return () => {
-      viewport.removeEventListener('wheel', handleWheel)
-      window.clearTimeout(wheelRef.current.timer)
-    }
-  }, [total])
-
-  useEffect(() => {
-    const closeOnEscape = (event) => { if (event.key === 'Escape') latest.current.onClose?.() }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [])
-
-  const startDrag = (event) => {
-    if (event.button !== 0) return
-    const card = viewportRef.current?.querySelector('.sea-card')
-    const step = card ? card.offsetWidth * 1.08 : 220
-    window.clearTimeout(pickTimerRef.current)
-    cancelWheel()
-    dragRef.current = { active: true, startX: event.clientX, startPosition: positionRef.current, step, moved: false }
-    setDragging(true)
-  }
-
-  const choose = (index) => {
-    if (Date.now() - clickGuardRef.current < 260) return
-    cancelWheel()
-    const current = positionRef.current
-    let delta = index - current
-    delta = ((delta + total / 2) % total + total) % total - total / 2
-    moveTo(current + delta)
-    schedulePick(index, 420)
-  }
-
-  const offsetOf = (index) => {
-    if (!total) return 0
-    let value = (index - position + total / 2) % total
-    if (value < 0) value += total
-    return value - total / 2
-  }
-
-  return { dragging, viewportRef, startDrag, choose, offsetOf }
+function DailyContracts({ daily, now, busy, onAction }) {
+  if (!daily) return null
+  const remaining = (daily.day + 1) * 86400000 - now
+  return <aside className="panel daily-panel" aria-label="航务委托">
+    <div className="daily-head"><ClipboardList size={18} aria-hidden="true" /><h2>航务委托</h2><span>{remaining > 0 ? `距刷新 ${formatCountdown(remaining)}` : '等待同步'}</span></div>
+    {DAILY_CONTRACTS.map(({ id, label, target, reward }) => {
+      const progress = Math.min(target, daily.progress?.[id] || 0)
+      const claimed = daily.claimed?.[id]
+      return <div className="daily-contract" key={id}>
+        <div className="daily-contract-head"><strong>{label}</strong><b>{progress}/{target}</b></div>
+        <progress value={progress} max={target} aria-label={label} />
+        <div className="daily-contract-foot">
+          <span className="daily-reward"><Coins size={13} aria-hidden="true" />{reward.coins} 鱼币{Object.entries(reward.materials || {}).map(([name, qty]) => <span key={name}><ItemIllustration item={name} />{name} ×{qty}</span>)}</span>
+          {claimed ? <span className="daily-claimed"><Check size={13} /> 已领取</span>
+            : <button className="secondary-button tiny" disabled={busy || progress < target || remaining <= 0} onClick={() => onAction('claimDailyContract', { contractId: id }, '航务委托奖励已领取')}>领取</button>}
+        </div>
+      </div>
+    })}
+  </aside>
 }
 
-function SeaSelectorOverlay({ state, onClose, onSelect, onUnlock }) {
-  const reachable = depthsFor(state)
-  const selectedId = state.fishing.selectedDepthId || reachable[0]?.id
-  const selectedIndex = Math.max(0, DEPTHS.findIndex((depth) => depth.id === selectedId))
-  const { dragging, viewportRef, startDrag, choose, offsetOf } = useCarousel({
-    total: DEPTHS.length,
-    initialIndex: selectedIndex,
-    canPick: (index) => reachable.some((item) => item.id === DEPTHS[index]?.id),
-    onPick: (index) => onSelect(DEPTHS[index].id),
-    onClose,
-  })
-
-  return <><button className="sea-overlay-scrim" onClick={onClose} aria-label="关闭海域选择" /><section className="sea-overlay-panel" role="dialog" aria-modal="true" aria-label="选择海域"><button className="icon-button sea-overlay-close" onClick={onClose} aria-label="关闭海域选择" title="关闭"><X size={18} /></button><div className={cn('sea-carousel-viewport', dragging && 'is-dragging')} ref={viewportRef} onPointerDown={startDrag} onDragStart={(event) => event.preventDefault()}><div className="sea-carousel-track">{DEPTHS.map((depth, index) => { const unlocked = reachable.some((item) => item.id === depth.id); const selected = depth.id === selectedId; const offset = offsetOf(index); const distance = Math.abs(offset); const scale = Math.max(0.84, 1 - distance * 0.055); const opacity = Math.max(0, 1 - Math.max(0, distance - 1.2) * 0.3) * (unlocked ? 1 : 0.94); const unlock = depthUnlockCost(state, depth.id)
-const canPay = canUnlockDepth(state, depth.id)
-return <div key={depth.id} style={{ '--offset': offset.toFixed(3), '--scale': scale.toFixed(3), '--card-opacity': opacity.toFixed(3), zIndex: Math.round(100 - distance * 10), pointerEvents: distance > 2.45 ? 'none' : 'auto' }} className={cn('sea-card', selected && 'sea-card-selected', !unlocked && 'sea-card-locked')} aria-label={`${depth.label} ${unlocked ? '可用' : '未解锁'}`} aria-hidden={distance > 2.45} onClick={(event) => { if (event.target.closest('button, .sea-card-unlock')) return; choose(index) }}>
-  <button className="sea-card-pick" tabIndex={distance > 2.45 ? -1 : 0} onClick={() => choose(index)}>
-    <span className="sea-card-icon" style={{ color: depth.color }}>{depth.icon}</span><strong>{depth.label}</strong><small>{unlocked ? '可用' : '未解锁'}</small>
-  </button>
-  <div className={cn('sea-card-produce', !unlocked && 'is-locked')}>
-    <span className="sea-card-produce-label">出土</span>
-    <span className="sea-card-produce-list">{(DEPTH_PRODUCE[depth.id] || []).map((name) => <i key={name} style={{ color: MATERIALS[name]?.color }} title={`${name} · 来源 ${MATERIAL_SOURCE[name] || '—'}`}>{MATERIALS[name]?.icon} {name}</i>)}</span>
-  </div>
-  {!unlocked && unlock && <div className="sea-card-unlock">
-    <span className="sea-card-cost">{MATERIALS[unlock.material]?.icon} ×{unlock.cost} · {unlock.coins}</span>
-    <button className="secondary-button tiny" disabled={!canPay} onClick={() => onUnlock(depth.id)}><Unlock size={13} /> 解锁</button>
-  </div>}
-</div> })}</div></div></section></>
+function SeaSelectorOverlay({ state, onClose, onSelect, onUnlock, busy }) {
+  const reachable = new Set(depthsFor(state).map((depth) => depth.id))
+  const selectedId = state.fishing.selectedDepthId
+  return <GameDialog title="航区海图" className="sea-atlas-dialog" onClose={onClose} closeLabel="关闭海域选择">
+    <div className="sea-atlas-grid">
+      {DEPTHS.map((depth) => {
+        const unlocked = reachable.has(depth.id)
+        const selected = depth.id === selectedId
+        const requirement = depthUnlockCost(state, depth.id)
+        const survey = depthSurvey(state, depth.id)
+        const priorDepth = DEPTHS.find((item) => item.id === survey?.fromId)?.label
+        const surveyRod = state.config.rods.find((item) => item.id === survey?.rodId)
+        return <article className={cn('atlas-card', selected && 'atlas-current')} key={depth.id}>
+          <div className="atlas-card-image"><img src={depthArt(depth.id)} alt="" loading="lazy" decoding="async" /><StatusPill tone={selected ? 'live' : 'neutral'}>{selected ? '当前海域' : unlocked ? '已解锁' : '未解锁'}</StatusPill></div>
+          <div className="atlas-card-copy">
+            <h3>{depth.label}</h3>
+            {!unlocked && survey && <p className="atlas-survey">{survey.rewarded ? '踏勘完成，钥匙已发放。' : `在${priorDepth}钓获 ${survey.caught}/${survey.target} 条鱼，可获得解锁材料。`}</p>}
+            {!unlocked && surveyRod && <p className="atlas-loot"><ItemIllustration item={surveyRod} />{survey.rewarded ? `换上「${surveyRod.name}」再前往` : `踏勘完成可获得「${surveyRod.name}」`}</p>}
+            {!unlocked && requirement && <p className="atlas-cost"><ItemIllustration item={requirement.material} />{requirement.material} ×{requirement.cost} · {requirement.coins.toLocaleString('zh-CN')} 鱼币</p>}
+            {unlocked
+              ? <button className="secondary-button" disabled={selected || busy} onClick={() => onSelect(depth.id)}>{selected ? '垂钓中' : '前往垂钓'}<ArrowRight size={15} /></button>
+              : <button className="secondary-button" disabled={busy || !canUnlockDepth(state, depth.id)} onClick={() => onUnlock(depth.id)}><Unlock size={15} /> 解锁{depth.label}</button>}
+          </div>
+        </article>
+      })}
+    </div>
+  </GameDialog>
 }
 
 function RewardReportModal({ title, rewards, onClose, extra }) {
@@ -811,24 +772,18 @@ function RewardReportModal({ title, rewards, onClose, extra }) {
     })
     return [...map.values()].sort((a, b) => b.qty - a.qty)
   }, [rewards])
-  const total = merged.reduce((sum, item) => sum + item.qty, 0)
-  return <>
-    <button className="modal-scrim" onClick={onClose} aria-label="关闭兑奖统计" />
-    <section className="report-modal" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="report-head"><div><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭" title="关闭"><X size={16} /></button></div>
+  return <GameDialog title={title} className="reward-report-dialog" onClose={onClose}>
       {extra && <p className="report-extra">{extra}</p>}
-      <div className="report-total"><span>奖励总数</span><b>{total}</b></div>
       <div className="report-list">
         {merged.map((item) => <div className="report-row" key={`${item.kind}-${item.name}`}>
-          <span className="material-dot" style={{ background: item.kind === 'coin' ? COIN.color : MATERIALS[item.name]?.color || 'var(--accent)' }} />
+          <ItemIllustration item={item.name} fallback={<span className="material-dot" style={{ background: item.kind === 'coin' ? COIN.color : MATERIALS[item.name]?.color || 'var(--accent)' }} />} />
           <span>{item.name}</span>
           <b>×{item.qty}</b>
         </div>)}
         {!merged.length && <p className="admin-empty-line">无奖励</p>}
       </div>
       <button className="primary-button wide" onClick={onClose}>完成</button>
-    </section>
-  </>
+  </GameDialog>
 }
 
 function LotteryPage({ state, now, onAction, lottery, busy }) {
@@ -867,7 +822,7 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
     if (await onAction('craftTickets', { quantity: safeQuantity, tier: tierId }, '号码票已合成，可在下方查看。')) setQuantity(1)
   }
   return <>
-    <PageHeader title="彩票中心" action={<div className="draw-countdown"><TimerReset size={16} /><b>{entriesClosed ? '本期已截止' : `距开奖 ${formatCountdown(drawEnd - now)}`}</b></div>} />
+    <PageHeader title="彩票中心" art="lottery" description="将空白票合成号码票，等待当期结果。" action={<div className="draw-countdown"><TimerReset size={16} /><b>{entriesClosed ? '本期已截止' : `距开奖 ${formatCountdown(drawEnd - now)}`}</b></div>} />
     <div className="metric-grid four"><Metric label="空白彩票" value={blankTickets.length} tone="lottery" /><Metric label="待开奖" value={assigned.length} /><Metric label="待兑奖" value={claimable.length} tone={claimable.length ? 'success' : 'default'} /><Metric label="已兑奖彩票" value={state.stats.claimedTickets || 0} /></div>
     <div className="lottery-layout">
       <section className="panel ticket-panel">
@@ -935,7 +890,7 @@ function NumberedTicketCard({ ticket, config }) {
   const status = ticket.status === 'DRAWN' ? '待兑奖' : '待开奖'
   const statusTone = ticket.status === 'DRAWN' ? 'success' : 'live'
   const batchLabel = ticket.batchId ? new Date(ticket.batchId).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '本期'
-  return <article className={cn('numbered-ticket-card', advanced && 'advanced')} style={{ '--card-color': type.cardColor, '--ticket-accent': type.accentColor }}><div className="numbered-ticket-top"><div><strong>{type.name}</strong></div><StatusPill tone={statusTone}>{status}</StatusPill></div><div className="numbered-ticket-sub"><span>{batchLabel}</span><span>{type.min} — {type.max}</span></div><div className="numbered-ticket-numbers">{ticket.numbers.map((number) => <span key={number} className={ticket.drawnNumbers?.includes(number) ? 'number-hit' : ''}>{number}</span>)}</div>{ticket.status === 'DRAWN' ? <div className="numbered-ticket-result"><strong>{ticket.hits ?? 0}</strong><span>{ticket.rewards.map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、') || '安慰奖'}</span></div> : <div className="numbered-ticket-result pending"><span>待开奖</span></div>}<div className="numbered-ticket-foot"><span /></div></article>
+  return <article className={cn('numbered-ticket-card', advanced && 'advanced')} style={{ '--card-color': type.cardColor, '--ticket-accent': type.accentColor }}><div className="numbered-ticket-top"><div><ItemIllustration item="彩票" fallback={<Ticket size={20} />} /><strong>{type.name}</strong></div><StatusPill tone={statusTone}>{status}</StatusPill></div><div className="numbered-ticket-sub"><span>{batchLabel}</span><span>{type.min} — {type.max}</span></div><div className="numbered-ticket-numbers">{ticket.numbers.map((number) => <span key={number} className={ticket.drawnNumbers?.includes(number) ? 'number-hit' : ''}>{number}</span>)}</div>{ticket.status === 'DRAWN' ? <div className="numbered-ticket-result"><strong>{ticket.hits ?? 0}</strong><span>{ticket.rewards.map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、') || '安慰奖'}</span></div> : <div className="numbered-ticket-result pending"><span>待开奖</span></div>}<div className="numbered-ticket-foot"><span /></div></article>
 }
 
 function FxSparkline({ points }) {
@@ -1058,7 +1013,7 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
     setGrainChoice((current) => ({ ...current, [name]: grainId }))
   }
   return <>
-    <PageHeader title="深海FX" />
+    <PageHeader title="深海 FX" art="fx" description="使用鱼币交易词条行情，查看报价、持仓和成交记录。" />
     <div className="metric-grid four">
       <Metric label="持仓市值" value={fmtPrice(portfolio)} tone="success" />
       <Metric label="鱼币余额" value={coins.toLocaleString('zh-CN')} />
@@ -1171,10 +1126,7 @@ function MachineFishPicker({ state, machineId, limitKg, onClose, onAction }) {
     if (!ids.length) return
     if (await onAction('machineDepositFish', { machineId, fishIds: ids }, '鱼获已交付')) onClose()
   }
-  return <>
-    <button className="scratch-stage-scrim" onClick={onClose} aria-label="关闭交付鱼" />
-    <section className="scratch-stage-panel machine-picker" role="dialog" aria-modal="true" aria-label="交付鱼">
-      <button className="icon-button scratch-stage-close" onClick={onClose} aria-label="关闭" title="关闭"><X size={18} /></button>
+  return <GameDialog title="交付鱼" className="machine-picker" onClose={onClose}>
       <div className="machine-pick-head">
         <strong>交付鱼</strong>
         <span>{picked.size} 条 · {totalKg.toFixed(1)} / {limitKg} kg</span>
@@ -1191,27 +1143,32 @@ function MachineFishPicker({ state, machineId, limitKg, onClose, onAction }) {
         <button className="secondary-button" onClick={onClose}>取消</button>
         <button className="primary-button" disabled={!picked.size || totalKg > limitKg} onClick={submit}>交付 {picked.size}</button>
       </div>
-    </section>
-  </>
+  </GameDialog>
 }
 
 // 机器卡：一格一台。数值全部从 config 读，前端不写死任何平衡数字。
-function MachineCard({ state, machineId, onAction }) {
+function MachineCard({ state, machineId, onAction, busy = false }) {
   const config = state.config
   const def = machineDefFor(config, machineId)
   const owned = state.machines?.owned?.[machineId]
   const [cardQty, setCardQty] = useState(0)
+  const [scratchTypeId, setScratchTypeId] = useState('')
   const [fishOpen, setFishOpen] = useState(false)
   if (!def) return null
   if (!machineUnlocked(state, machineId, config)) {
+    const requirement = def.unlock?.kind === 'scratched'
+      ? `累计刮开 ${def.unlock.value} 张刮刮乐后可用`
+      : def.unlock?.kind === 'depth'
+        ? `解锁${DEPTHS.find((zone) => zone.id === config.machines.modulesUnlockDepth)?.label || '指定海域'}后可用`
+        : '解锁无灯黑市后可用'
     return <div className="machine-tile is-locked">
-      <div className="machine-tile-head"><strong>{def.name}</strong><StatusPill tone="neutral">锁定</StatusPill></div>
-      <div className="machine-tile-lock">累计刮开 {def.unlock?.value ?? 50} 张后可用</div>
+      <div className="machine-tile-head"><ItemIllustration item={def.id} fallback={<SlidersHorizontal size={19} />} /><strong>{def.name}</strong><StatusPill tone="neutral">锁定</StatusPill></div>
+      <div className="machine-tile-lock">{requirement}</div>
     </div>
   }
   const at = Date.now()
   const status = owned ? machineStatus(state, machineId, at, config) : 'off'
-  const shift = machineShiftHours(owned || {}, config)
+  const shift = machineShiftHours(owned || { machineId }, config)
   const feeUnit = def.fee.unit === 'blackCoins' ? '渔币' : '鱼币'
   const rentUnit = def.rent.unit === 'fishKg' ? 'kg' : (def.rent.unit === 'blackCoins' ? '渔币' : '鱼币')
   const rentKey = def.deposits.find((entry) => entry.from === 'fish') ? 'fishKg' : (def.deposits.find((entry) => entry.from === 'blackCoins') ? 'blackCoins' : 'coins')
@@ -1220,7 +1177,11 @@ function MachineCard({ state, machineId, onAction }) {
   const feeKey = def.fee.unit === 'blackCoins' ? 'blackCoins' : 'coins'
   const feeHeld = Number(owned?.deposit?.[feeKey]) || 0
   const cards = owned?.deposit?.items?.queue?.length || 0
-  const readyCards = (state.scratchCards || []).filter((card) => card.status === 'ready').length
+  const scratchGroups = config.scratchTypes.map((type) => ({
+    ...type,
+    available: (state.scratchCards || []).filter((card) => card.typeId === type.id && card.status === 'ready').length,
+  })).filter((type) => type.available > 0)
+  const currentScratchType = scratchGroups.find((type) => type.id === scratchTypeId) || scratchGroups[0]
   const basket = owned?.basket || { coins: 0, materials: {} }
   const basketMaterials = Object.entries(basket.materials || {}).filter(([, qty]) => qty > 0)
   const hasBasket = (basket.coins || 0) > 0 || basketMaterials.length > 0
@@ -1229,7 +1190,7 @@ function MachineCard({ state, machineId, onAction }) {
   const modsUnlocked = machineModulesUnlocked(state, config)
   const otOn = Boolean(owned?.overtime?.wantOn)
   const scratchDeposit = def.deposits.some((entry) => entry.from === 'scratch')
-  const cardMax = Math.min(readyCards, 500)
+  const cardMax = Math.max(0, Math.min(currentScratchType?.available || 0, machineDepositMax(owned || {}, config, 'items') - cards))
   const cardTake = Math.max(0, Math.min(cardQty, cardMax))
   const fishLimitKg = def.deposits.find((entry) => entry.from === 'fish')
     ? Math.max(0, machineDepositMax(owned || {}, config, rentKey) - rentHeld)
@@ -1237,26 +1198,28 @@ function MachineCard({ state, machineId, onAction }) {
 
   const powerOn = () => onAction('machineStart', { machineId }, `${def.name} 已开机`)
   const powerOff = () => onAction('machineStop', { machineId }, `${def.name} 已关机`)
+  const balance = feeKey === 'blackCoins' ? state.blackMarket?.coins : state.coins
+  const depositAmount = Math.max(0, Math.floor(Math.min(100, Number(balance) || 0, machineDepositMax(owned || {}, config, feeKey) - feeHeld)))
   const depositCoins = () => {
     const action = feeKey === 'blackCoins' ? 'machineDepositBlackCoins' : 'machineDepositCoins'
-    onAction(action, { machineId, amount: 100 }, '已交付 100')
+    if (depositAmount) onAction(action, { machineId, amount: depositAmount }, `已交付 ${depositAmount} ${feeUnit}`)
   }
-  const depositCards = () => {
-    const typeId = (state.scratchCards || []).find((card) => card.status === 'ready')?.typeId
+  const depositCards = async () => {
+    const typeId = currentScratchType?.id
     if (!typeId || !cardTake) return
-    onAction('machineDepositCards', { machineId, typeId, qty: cardTake }, `已交付 ${cardTake} 张刮刮乐`)
-    setCardQty(0)
+    if (await onAction('machineDepositCards', { machineId, typeId, qty: cardTake }, `已交付 ${cardTake} 张刮刮乐`)) setCardQty(0)
   }
 
   return <div className={cn('machine-tile', owned?.on && 'is-on')}>
     <div className="machine-tile-head">
+      <ItemIllustration item={def.id} fallback={<SlidersHorizontal size={19} />} />
       <strong>{def.name}</strong>
       <StatusPill tone={status === 'running' || status === 'overtime' ? 'live' : status === 'starving' || status === 'broke' ? 'warning' : 'neutral'}>{MACHINE_STATUS_TEXT[status] || status}</StatusPill>
       <span className="machine-tile-shift">{shift.startHour}–{shift.endHour}</span>
     </div>
 
     {!owned && <div className="machine-tile-body">
-      <button className="primary-button wide" onClick={powerOn}>开机</button>
+      <button className="primary-button wide" disabled={busy} onClick={powerOn}>开机</button>
     </div>}
 
     {owned && <>
@@ -1277,28 +1240,33 @@ function MachineCard({ state, machineId, onAction }) {
         <span>待领取</span>
         <b>{Math.floor(basket.coins || 0)} 鱼币</b>
         {basketMaterials.map(([name, qty]) => <i key={name}>{name} ×{qty}</i>)}
-        <button className="secondary-button tiny" disabled={!hasBasket} onClick={() => onAction('machineClaim', { machineId }, '已领取产出')}>领取</button>
+        <button className="secondary-button tiny" disabled={busy || !hasBasket} onClick={() => onAction('machineClaim', { machineId }, '已领取产出')}>领取</button>
       </div>
 
       <div className="machine-actions">
-        {def.deposits.some((entry) => entry.from === 'fish') && <button className="secondary-button tiny" disabled={!owned.on} onClick={() => setFishOpen(true)}>交付鱼</button>}
-        {(def.deposits.some((entry) => entry.from === 'coins') || def.deposits.some((entry) => entry.from === 'blackCoins')) && <button className="secondary-button tiny" onClick={depositCoins}>交付 100</button>}
-        {def.overtime && <button className={cn('secondary-button tiny', otOn && 'is-on')} aria-pressed={otOn} disabled={!owned.on} onClick={() => onAction('machineSetOvertime', { machineId, on: !otOn }, otOn ? '已取消今晚加班' : '今晚加班已开启')}>今晚加班</button>}
+        {def.deposits.some((entry) => entry.from === 'fish') && <button className="secondary-button tiny" disabled={busy || !owned.on || !fishLimitKg} onClick={() => setFishOpen(true)}>交付鱼</button>}
+        {(def.deposits.some((entry) => entry.from === 'coins') || def.deposits.some((entry) => entry.from === 'blackCoins')) && <button className="secondary-button tiny" disabled={busy || !depositAmount} onClick={depositCoins}>{depositAmount ? `交付 ${depositAmount} ${feeUnit}` : `无法交付${feeUnit}`}</button>}
+        {def.overtime && <button className={cn('secondary-button tiny', otOn && 'is-on')} aria-pressed={otOn} disabled={busy || !owned.on} onClick={() => onAction('machineSetOvertime', { machineId, on: !otOn }, otOn ? '已取消今晚加班' : '今晚加班已开启')}>今晚加班</button>}
         {owned.on
-          ? <button className="secondary-button tiny" onClick={powerOff}>关机</button>
-          : <button className="primary-button tiny" onClick={powerOn}>开机</button>}
+          ? <button className="secondary-button tiny" disabled={busy} onClick={powerOff}>关机</button>
+          : <button className="primary-button tiny" disabled={busy} onClick={powerOn}>开机</button>}
       </div>
 
       {scratchDeposit && <div className="machine-qty">
         <div className="quantity-head"><div><span className="field-label">交付刮刮乐</span><strong>{cardTake} <small>/ {cardMax}</small></strong></div></div>
+        {scratchGroups.length > 1 && <label className="admin-field"><span>卡片类型</span><select className="admin-input" value={currentScratchType?.id || ''} onChange={(event) => { setScratchTypeId(event.target.value); setCardQty(0) }}>
+          {scratchGroups.map((type) => <option key={type.id} value={type.id}>{type.name}（{type.available} 张）</option>)}
+        </select></label>}
         <div className="quantity-control">
           <input className="quantity-range" type="range" min="0" max={Math.max(0, cardMax)} value={cardTake} disabled={!cardMax} aria-label="交付刮刮乐数量"
             style={{ '--range-progress': cardMax ? `${(cardTake / cardMax) * 100}%` : '0%' }}
             onChange={(event) => setCardQty(Number(event.target.value))} />
           <input className="quantity-input" type="number" min="0" max={cardMax} value={cardTake} disabled={!cardMax} aria-label="交付刮刮乐数量输入" onChange={(event) => setCardQty(Number(event.target.value))} />
         </div>
-        <button className="secondary-button tiny" disabled={!cardTake} onClick={depositCards}>交付 {cardTake}</button>
+        <button className="secondary-button tiny" disabled={busy || !cardTake} onClick={depositCards}>交付 {cardTake}</button>
       </div>}
+
+      {def.id === 'watcher' && <WatcherOrders def={def} state={state} busy={busy} onAction={onAction} />}
 
       <div className="machine-modules">
         <span>模块 {st.slots}/{def.moduleSlots} · 负荷 {st.load}/{def.loadCapacity}</span>
@@ -1322,17 +1290,55 @@ function MachineCard({ state, machineId, onAction }) {
   </div>
 }
 
-function Workshop({ state, onAction }) {
+function WatcherOrders({ def, state, busy, onAction }) {
+  const traits = state.config.traits || TRAITS
+  const [symbol, setSymbol] = useState('')
+  const [side, setSide] = useState('buy')
+  const [limit, setLimit] = useState('')
+  const [quantity, setQuantity] = useState('1')
+  const orders = state.machines?.orders || []
+  const symbolId = traits.some((item) => item.id === symbol) ? symbol : traits[0]?.id
+  const price = Number(limit)
+  const qty = Number(quantity)
+  const full = orders.length >= (def.orders?.max || 2)
+  const canSubmit = Boolean(symbolId && Number.isFinite(price) && price > 0 && Number.isInteger(qty) && qty > 0 && !full && !busy)
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!canSubmit) return
+    if (await onAction('machineOrderPlace', { name: symbolId, side, price, qty }, '限价委托已提交')) setLimit('')
+  }
+  return <section className="watcher-orders" aria-label="盯盘机限价委托">
+    <div className="watcher-head"><h3>限价委托</h3><span>{orders.length}/{def.orders?.max || 2} 单</span></div>
+    <p>交易时段同步时检查。达到限价且鱼币、持仓和机器预付充足时整笔成交。未成交的委托可撤销，提交时无需冻结资产。</p>
+    <form className="watcher-form" onSubmit={submit}>
+      <label className="admin-field"><span>标的</span><select className="admin-input" value={symbolId || ''} onChange={(event) => setSymbol(event.target.value)}>{traits.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+      <label className="admin-field"><span>方向</span><select className="admin-input" value={side} onChange={(event) => setSide(event.target.value)}><option value="buy">买入</option><option value="sell">卖出</option></select></label>
+      <label className="admin-field"><span>限价（鱼币）</span><input className="admin-input" type="number" required min="0.01" step="0.01" inputMode="decimal" value={limit} onChange={(event) => setLimit(event.target.value)} /></label>
+      <label className="admin-field"><span>份数</span><input className="admin-input" type="number" required min="1" inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+      <button className="secondary-button wide" disabled={!canSubmit}>{full ? '委托已满' : '提交委托'}</button>
+    </form>
+    {orders.length > 0 && <ul className="watcher-list">
+      {orders.map((order) => <li key={order.id}>
+        <div><strong>{order.side === 'buy' ? '买入' : '卖出'} {traits.find((item) => item.id === order.name)?.label || order.name}</strong><span>{fmtPrice(order.price)} 鱼币 · {order.qty} 份</span>
+          {order.expireAt > 0 && <small>{new Date(order.expireAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 到期</small>}
+        </div>
+        <button className="secondary-button tiny" disabled={busy} onClick={() => onAction('machineOrderCancel', { orderId: order.id }, '委托已撤销')}>撤单</button>
+      </li>)}
+    </ul>}
+  </section>
+}
+
+function Workshop({ state, onAction, busy }) {
   const list = state.config?.machines?.list || {}
   const ids = Object.keys(list).filter((id) => list[id].enabled !== false)
   return <>
-    <PageHeader title="工作间" />
+    <PageHeader title="工作间" art="black-workshop" description="为机器准备材料和费用，再领取累计产出。" />
     <div className="machine-grid">
-      {ids.map((id) => <MachineCard key={id} state={state} machineId={id} onAction={onAction} />)}
+      {ids.map((id) => <MachineCard key={id} state={state} machineId={id} onAction={onAction} busy={busy} />)}
     </div>
   </>
 }
-function ScratchPage({ state, onAction, onGuideSeen, busy }) {
+function ScratchPage({ state, onAction, onGuideSeen, busy, onOpenWorkshop }) {
   const config = state.config
   const readyCards = state.scratchCards.filter((card) => card.status === 'ready')
   const revealedCards = state.scratchCards.filter((card) => card.status === 'revealed')
@@ -1389,7 +1395,7 @@ function ScratchPage({ state, onAction, onGuideSeen, busy }) {
   }
 
   return <>
-    <PageHeader title="刮刮乐" action={<button className="primary-button" disabled={!readyCards.length} onClick={() => setPicking(true)}><Gift size={16} /> 开始刮卡</button>} />
+    <PageHeader title="刮刮乐" art="scratch" description="翻开卡面，兑奖后奖励才会入账。" action={<button className="primary-button" disabled={!readyCards.length} onClick={() => setPicking(true)}><Gift size={16} /> 开始刮卡</button>} />
     {luckGuideOpen && <GuideCard
       title="刮层直觉"
       body={guideStepCopy(config?.guide, 'scratchLuck')}
@@ -1424,14 +1430,17 @@ function ScratchPage({ state, onAction, onGuideSeen, busy }) {
       {!revealedCards.length && <div className="panel numbered-empty"><EmptyState icon={Gift} title={readyCards.length ? '刮开的卡片会在这里兑奖' : '在潮汐商会兑换鱼获可以获得刮刮乐'} /></div>}
     </div>
     <Pager {...paged} />
+    {state.config.machines?.list?.claw?.enabled !== false && <section className="dock-workshop">
+      <div className="section-row"><h2>码头工作间</h2></div>
+      {workshopLocation(state) === 'fish'
+        ? <MachineCard state={state} machineId="claw" onAction={onAction} busy={busy} />
+        : onOpenWorkshop && <button className="secondary-button" onClick={onOpenWorkshop}>前往黑市工作间 <ArrowRight size={16} /></button>}
+    </section>}
     {picking && <ScratchPickerOverlay state={state} onClose={() => setPicking(false)} onPick={openStage} />}
     {stage && (() => {
       const type = scratchTypeFor(config, stage.typeId)
       const under = stage.ids.slice(Math.max(0, stage.index - 3), stage.index).map((id) => cardsById.get(id)).filter(Boolean)
-      return <>
-        <button className="scratch-stage-scrim" onClick={() => setStage(null)} aria-label="关闭刮刮乐" />
-        <section className="scratch-stage-panel" role="dialog" aria-modal="true" aria-label={type.name} onKeyDown={(event) => { if (event.key === 'Escape') setStage(null) }}>
-          <button className="icon-button scratch-stage-close" autoFocus onClick={() => setStage(null)} aria-label="关闭刮刮乐" title="关闭"><X size={18} /></button>
+      return <GameDialog title={type.name} className="scratch-stage-dialog" onClose={() => setStage(null)} closeLabel="关闭刮刮乐">
           {currentCard && <div className="scratch-stack">
             {under.map((card, layer) => <div className="scratch-stack-layer" key={card.id} style={{ '--layer': under.length - layer }} aria-hidden="true">
               <ScratchCard card={card} type={scratchTypeFor(config, card.typeId)} showClaim={false} />
@@ -1444,46 +1453,33 @@ function ScratchPage({ state, onAction, onGuideSeen, busy }) {
               ? <button className="secondary-button" onClick={() => setStage({ ...stage, index: nextIndex })}>下一张</button>
               : <button className="secondary-button" onClick={() => setStage(null)}>返回兑奖</button>)}
           </div>
-        </section>
-      </>
+      </GameDialog>
     })()}
     {report && <RewardReportModal title="刮刮乐兑奖" extra={`已结算 ${report.count} 张刮刮乐`} rewards={report.rewards} onClose={() => setReport(null)} />}
   </>
 }
 
-// 待刮选择：和海域选择同一套轮播手势，只有数量大于零的刮刮乐可以选中。
 function ScratchPickerOverlay({ state, onClose, onPick }) {
   const types = state.config.scratchTypes
-  const counts = useMemo(() => types.map((type) => state.scratchCards.filter((card) => card.status === 'ready' && card.typeId === type.id).length), [types, state.scratchCards])
-  const initial = Math.max(0, counts.findIndex((count) => count > 0))
-  const { dragging, viewportRef, startDrag, choose, offsetOf } = useCarousel({
-    total: types.length,
-    initialIndex: initial,
-    canPick: (index) => (counts[index] || 0) > 0,
-    onPick: (index) => onPick(types[index].id),
-    onClose,
-  })
-  return <>
-    <button className="sea-overlay-scrim" onClick={onClose} aria-label="关闭刮刮乐选择" />
-    <section className="sea-overlay-panel" role="dialog" aria-modal="true" aria-label="选择刮刮乐">
-      <button className="icon-button sea-overlay-close" onClick={onClose} aria-label="关闭刮刮乐选择" title="关闭"><X size={18} /></button>
-      <div className={cn('sea-carousel-viewport', dragging && 'is-dragging')} ref={viewportRef} onPointerDown={startDrag} onDragStart={(event) => event.preventDefault()}>
-        <div className="sea-carousel-track">{types.map((type, index) => {
-          const count = counts[index] || 0
-          const selectable = count > 0
-          const offset = offsetOf(index)
-          const distance = Math.abs(offset)
-          const scale = Math.max(0.84, 1 - distance * 0.055)
-          const opacity = Math.max(0, 1 - Math.max(0, distance - 1.2) * 0.3) * (selectable ? 1 : 0.94)
-          return <div key={type.id} style={{ '--offset': offset.toFixed(3), '--scale': scale.toFixed(3), '--card-opacity': opacity.toFixed(3), '--card-color': type.coatColor, zIndex: Math.round(100 - distance * 10), pointerEvents: distance > 2.45 ? 'none' : 'auto' }} className={cn('sea-card', !selectable && 'sea-card-locked')} aria-label={`${type.name} ${selectable ? `剩余 ${count}` : '无'}`} aria-hidden={distance > 2.45} onClick={(event) => { if (event.target.closest('button')) return; choose(index) }}>
-            <button className="sea-card-pick" tabIndex={distance > 2.45 || !selectable ? -1 : 0} disabled={!selectable} onClick={() => choose(index)}>
-              <span className="sea-card-icon scratch-picker-icon" style={{ color: type.coatColor }}>◇</span><strong>{type.name}</strong><small>{selectable ? `×${count}` : '无'}</small>
-            </button>
-          </div>
-        })}</div>
-      </div>
-    </section>
-  </>
+  const counts = useMemo(() => {
+    const result = new Map()
+    state.scratchCards.forEach((card) => {
+      if (card.status === 'ready') result.set(card.typeId, (result.get(card.typeId) || 0) + 1)
+    })
+    return result
+  }, [state.scratchCards])
+  return <GameDialog title="选择刮刮乐" className="scratch-picker-dialog" onClose={onClose} closeLabel="关闭刮刮乐选择">
+    <div className="scratch-picker-list">
+      {types.map((type) => {
+        const count = counts.get(type.id) || 0
+        return <button className="scratch-picker-option" key={type.id} disabled={!count} onClick={() => onPick(type.id)}>
+          <ItemIllustration item={type.name} fallback={<Gift size={25} />} />
+          <span><strong>{type.name}</strong><small>{count > 0 ? `待刮 ${count} 张` : '暂无卡片'}</small></span>
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
+      })}
+    </div>
+  </GameDialog>
 }
 
 // 真刮刮乐：涂层用 canvas 覆盖，鼠标/手指擦除到一定比例才算刮开。
@@ -1606,14 +1602,14 @@ function ScratchCard({ card, onReveal, onClaim, type, threshold = 0.45, radius =
     onLostPointerCapture={end}
     onDragStart={(event) => event.preventDefault()}
   >
-    <div className="scratch-card-head"><span>{type.name}</span><span>{revealed ? (card.pairs ? `${card.pairs} 组` : '—') : `${Math.round(progress * 100)}%`}</span></div>
+    <div className="scratch-card-head"><span><ItemIllustration item="刮刮乐" fallback={<Gift size={16} />} />{type.name}</span><span>{revealed ? (card.pairs ? `${card.pairs} 组` : '—') : `${Math.round(progress * 100)}%`}</span></div>
     <div className="scratch-stage">
       <div className="scratch-face" style={{ gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))` }} aria-hidden={revealed ? undefined : 'true'}>
         {Array.from({ length: slots }, (_, index) => {
           const slot = face[index]
           const paired = pairedFlags[index]
           return <div className={cn('scratch-slot', paired && 'is-paired')} key={index} title={slot ? `${slot.name} ×${slot.qty}${slot.need > 2 ? ` · ${slot.need}` : ''}` : undefined}>
-            {slot ? <i style={{ color: colorOf(slot) }}>{iconOf(slot)}</i> : <span className="scratch-slot-empty">?</span>}
+            {slot ? <ItemIllustration item={slot.kind === 'coin' ? '鱼币' : slot.name} fallback={<i style={{ color: colorOf(slot) }}>{iconOf(slot)}</i>} /> : <span className="scratch-slot-empty">?</span>}
           </div>
         })}
       </div>
@@ -1679,7 +1675,7 @@ function BlackBuyPage({ state, onAction, busy }) {
   const canRefresh = Number(bm.rerolls) < Number(cfg.order.refreshLimit) && Number(bm.coins) >= Number(cfg.order.refreshCost)
 
   return <>
-    <PageHeader title="收购" />
+    <PageHeader title="黑市收购" art="black-buy" description="优先交付今日合约需要的鱼获。" />
     <div className="metric-grid four">
       <Metric label="渔币" value={Number(bm.coins) || 0} tone="lottery" />
       <Metric label="今日配额" value={`${sold} / ${quota}`} tone={sold >= quota ? 'warning' : 'default'} />
@@ -1780,7 +1776,7 @@ function BlackSuperPage({ state, onAction, busy }) {
   const last = bm.lastSuper
 
   return <>
-    <PageHeader title="超级刮刮乐" />
+    <PageHeader title="超级刮刮乐" art="black-super" description="用待刮卡片组合卡面，开刮前可核对消耗。" />
     {superCard ? <>
       <div className="metric-grid three">
         <Metric label="投入" value={`${superCard.totalCount} 张`} />
@@ -1797,7 +1793,7 @@ function BlackSuperPage({ state, onAction, busy }) {
             onClick={() => { if (open) return; setFlipped((prev) => new Set(prev).add(index)) }}
           >
             {open
-              ? <><i style={{ color: colorOf(slot) }}>{iconOf(slot)}</i><small>×{Number(slot.heat).toFixed(2)}</small></>
+              ? <><ItemIllustration item={slot.kind === 'coin' ? '鱼币' : slot.name} fallback={<i style={{ color: colorOf(slot) }}>{iconOf(slot)}</i>} /><small>×{Number(slot.heat).toFixed(2)}</small></>
               : <span aria-hidden="true">?</span>}
           </button>
         })}
@@ -1865,7 +1861,7 @@ function BlackShopPage({ state, onAction, busy }) {
   const purchases = bm.purchases || {}
   const daily = bm.dailyBuys || {}
   return <>
-    <PageHeader title="商店" />
+    <PageHeader title="黑市商店" art="black-shop" description="使用渔币兑换装备、补给和工作间模块。" />
     <div className="metric-grid three">
       <Metric label="渔币" value={coins} tone="lottery" />
       <Metric label="今日收购" value={`${Number(bm.soldToday) || 0} / ${blackDailyQuota(state, state.config)}`} />
@@ -1899,7 +1895,7 @@ function BlackShopPage({ state, onAction, busy }) {
         else if (item.dailyLimit > 0) note = `今日 ${used}/${item.dailyLimit}`
         if (item.kind === 'repair' && Number(state.rod.durability) >= Number(state.rod.maxDurability)) { note = '耐久已满'; disabled = true }
         return <div className={cn('black-shop-row', disabled && 'is-disabled')} key={item.id}>
-          <div className="black-shop-icon" aria-hidden="true">{item.kind === 'rod' ? <Anchor size={18} /> : item.kind === 'theme' ? <Moon size={18} /> : item.kind === 'scale' ? <Scale size={18} /> : item.kind === 'quota' ? <TrendingUp size={18} /> : item.kind === 'repair' ? <Hammer size={18} /> : item.kind === 'module' ? <SlidersHorizontal size={18} /> : item.kind === 'grain' ? <TrendingUp size={18} /> : <TimerReset size={18} />}</div>
+          <div className="black-shop-icon" aria-hidden="true"><ItemIllustration item={item} fallback={item.kind === 'rod' ? <Anchor size={18} /> : item.kind === 'theme' ? <Moon size={18} /> : item.kind === 'scale' ? <Scale size={18} /> : item.kind === 'quota' ? <TrendingUp size={18} /> : item.kind === 'repair' ? <Hammer size={18} /> : item.kind === 'module' ? <SlidersHorizontal size={18} /> : item.kind === 'grain' ? <TrendingUp size={18} /> : <TimerReset size={18} />} /></div>
           <div className="black-shop-copy"><strong>{item.name}</strong>{note && <small>{note}</small>}</div>
           <span className="black-price">◉ {price.toLocaleString('zh-CN')}</span>
           <button className="secondary-button" disabled={disabled} onClick={() => onAction('blackBuy', { itemId: item.id }, `已购买 ${item.name}`)}>购买</button>
@@ -1944,7 +1940,7 @@ function NpcPage({ state, onAction }) {
     onAction('exchangeFishBatch', { filter }, (data) => `已兑换 ${Number(data?.me?.npc?.lastExchange?.count) || 0} 条鱼，奖励已入账`)
   }
   return <>
-    <PageHeader title="潮汐商会" action={<div className="header-actions"><StatusPill tone={full ? 'warning' : 'live'}>{full ? '仓库已满' : '开放'}</StatusPill><span className="filter-count">仓库 {freshFish.length} / {capacity}</span><WarehouseUpgrade state={state} onAction={onAction} /></div>} />
+    <PageHeader title="潮汐商会" art="npc" description="把仓库鱼获兑换成票券与材料。" action={<div className="header-actions"><StatusPill tone={full ? 'warning' : 'live'}>{full ? '仓库已满' : '开放'}</StatusPill><span className="filter-count">仓库 {freshFish.length} / {capacity}</span><WarehouseUpgrade state={state} onAction={onAction} /></div>} />
     <div className="filter-row">
       {options.map((item) => <button key={item} className={cn('filter-button', filter === item && 'filter-active')} onClick={() => setFilter(item)}>{item}</button>)}
       <span className="filter-count">{filtered.length}</span>
@@ -1961,7 +1957,7 @@ function NpcPage({ state, onAction }) {
 function FishExchangeRow({ fish, quote, onExchange, traits }) {
   const { pricing, tier } = quote
   return <div className="panel fish-exchange-row">
-    <div className="fish-orb large" style={{ '--fish-color': fish.depthColor }}><Fish size={20} /></div>
+    <FishPortrait fish={fish} />
     <div className="exchange-fish-main">
       <div className="exchange-name"><strong>{fish.name}</strong><StatusPill tone={fish.rarity === '传说' ? 'lottery' : 'neutral'}>{fish.rarity}</StatusPill><span className="exchange-meta">{fish.latin} · {fish.depth} · {fish.weight} kg</span></div>
       <div className="trait-tags">{fish.traits.map((id) => { const trait = traits.find((item) => item.id === id); return <span key={id} style={{ color: trait?.color }}>{trait?.icon} {trait?.label} <small>{pricing.traitLines.find((line) => line.id === id)?.price ?? 0}</small></span> })}</div>
@@ -2187,16 +2183,18 @@ function SecuritySection({ user }) {
 
 function StatsPage({ state }) {
   const totalHits = state.stats.hits.reduce((a, b) => a + b, 0)
-  const topDepth = Object.entries(state.stats.fishByDepth).sort((a, b) => b[1] - a[1])[0]
+  const topDepth = [...DEPTHS].reverse().find((depth) => state.stats.fishByDepth[depth.label] > 0)
   const poolStats = state.stats.hitsByPool || {}
   const poolPeak = Math.max(...state.stats.hits, 1)
   return <>
-    <PageHeader title="中奖统计" />
+    <PageHeader title="航海日志" art="stats" description="查看发现的鱼种、各海域鱼获和累计兑奖记录。" />
+    <FishCodex state={state} />
+    <div className="section-row"><h2>航行总览</h2></div>
     <div className="metric-grid four">
       <Metric label="累计钓获" value={state.stats.totalCatches} tone="success" />
       <Metric label="累计脱钩" value={state.stats.totalEscapes || 0} helper={`耐久 −${state.stats.totalDurabilityLoss}`} tone="warning" />
       <Metric label="彩票命中记录" value={totalHits} tone="lottery" />
-      <Metric label="最深海域" value={topDepth?.[0] || '—'} helper={topDepth?.[1] || 0} />
+      <Metric label="最深海域" value={topDepth?.label || '—'} helper={topDepth ? state.stats.fishByDepth[topDepth.label] : undefined} />
     </div>
     <div className="metric-grid three">
       <Metric label="刮刮乐对子" value={state.stats.scratchPairs || 0} helper={`/${state.stats.totalScratch || 0}`} tone="warning" />
@@ -2241,7 +2239,7 @@ function StatsPage({ state }) {
 // 钓竿侧边面板：从钓鱼页右侧的耐久条唤出。
 // 这里是唯一的钓竿管理入口——竿的切换、强化、维修、材料全在这里，
 // 不再有独立的「钓竿与背包」页面。
-function DurabilityDrawer({ state, onClose, onAction }) {
+function DurabilityDrawer({ state, onClose, onAction, busy }) {
   const rod = state.rod
   const def = rodConfigFor(state.config, rod)
   const repair = def.repair || { material: '深蓝晶片', amount: 50, cost: 1 }
@@ -2260,12 +2258,10 @@ function DurabilityDrawer({ state, onClose, onAction }) {
     { label: '基础损耗', value: `${Math.round(tension.baseLoss || 0)} 点` },
   ]
   // 溢出维修初始自带：只要耐久没满就能修，修多少不设上限。
-  const canRepair = canRepairRod(state, rod) && rod.durability > 0
+  const emergencyRepair = canEmergencyRepairRod(state, rod)
+  const canRepair = canRepairRod(state, rod) || emergencyRepair
   const canUpgrade = rod.durability > MIN_DURABILITY && rod.status !== 'broken'
-  return <>
-    <button className="drawer-scrim" onClick={onClose} aria-label="关闭详情" />
-    <aside className="detail-drawer">
-      <div className="drawer-head"><div><h2>钓竿</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div>
+  return <GameDialog title="钓竿与强化" className="detail-drawer" onClose={onClose}>
 
       {/* 竿名 / 图标可点开全部钓竿 */}
       <button
@@ -2275,7 +2271,7 @@ function DurabilityDrawer({ state, onClose, onAction }) {
         aria-label={rodPickerOpen ? '收起钓竿列表' : '展开全部钓竿'}
         title={rodPickerOpen ? '收起' : '点击切换钓竿'}
       >
-        <div className="rod-emblem" style={{ color: rod.color }}><Anchor size={22} /></div>
+        <div className="rod-emblem" style={{ color: rod.color }}><ItemIllustration item={rod} fallback={<Anchor size={22} />} /></div>
         <div><strong>{rod.name}</strong><span>{rod.rarity} · 最远 {DEPTHS[rod.maxDepth]?.label}</span></div>
         <ChevronDown className={cn('drawer-hero-caret', rodPickerOpen && 'is-open')} size={16} aria-hidden="true" />
       </button>
@@ -2288,10 +2284,10 @@ function DurabilityDrawer({ state, onClose, onAction }) {
             role="option"
             aria-selected={active}
             className={cn('rod-picker-item', active && 'is-active')}
-            disabled={broken && !active}
-            onClick={() => { if (active) { setRodPickerOpen(false); return } onAction('selectRod', { rodId: item.id }, `已切换至 ${item.name}`); setRodPickerOpen(false) }}
+            disabled={busy || (broken && !active)}
+            onClick={async () => { if (active || await onAction('selectRod', { rodId: item.id }, `已切换至 ${item.name}`)) setRodPickerOpen(false) }}
           >
-            <div className="rod-mini" style={{ '--rod-color': item.color }}><div /></div>
+            <ItemIllustration item={item} fallback={<Anchor size={19} />} />
             <div className="rod-picker-copy">
               <strong>{item.name}</strong>
               <span>{item.rarity}{broken ? ' · 已损坏' : ''}</span>
@@ -2306,7 +2302,8 @@ function DurabilityDrawer({ state, onClose, onAction }) {
       <div className="rod-stat-grid">{stats.map((item) => <div key={item.label}><span>{item.label}</span><b>{item.value}</b></div>)}</div>
       <div className="upgrade-block">
         <div className="upgrade-head"><div><strong>耐久修复</strong></div><span className="cost"><span className="material-dot" style={{ background: MATERIALS[repair.material]?.color }} /> {repair.material} ×{repair.cost}</span></div>
-        <button className="secondary-button wide" disabled={!canRepair} onClick={() => onAction('repairRod', { rodId: rod.id })}>修复 +{repair.amount}{rod.durability >= rod.maxDurability ? '（已满）' : ''}</button>
+        {emergencyRepair && <p className="player-hint">免费补缀入门竿，回到河口重整。</p>}
+        <button className="secondary-button wide" disabled={busy || !canRepair} onClick={() => onAction('repairRod', { rodId: rod.id }, emergencyRepair ? '港口应急维修完成' : '钓竿已修复')}>{emergencyRepair ? '港口应急维修' : rod.durability >= rod.maxDurability ? '耐久已满' : `修复 +${repair.amount}`}</button>
       </div>
       {upgrades.map((upgrade) => {
         const level = Math.max(0, Math.floor(Number(levels[upgrade.id]) || 0))
@@ -2320,7 +2317,7 @@ function DurabilityDrawer({ state, onClose, onAction }) {
         return <div className="upgrade-block" key={upgrade.id}>
           <div className="upgrade-head"><div><strong>{upgrade.label}</strong></div><span className="cost">Lv.{level} / {maxLevel}</span></div>
           <span className="cost cost-price"><Coins size={11} /> {price.coins.toLocaleString('zh-CN')} · {isAutoRepair ? `阈值 ${level > 0 ? Math.round(threshold) : '未开启'}` : `每次 +${statValue}`} · {upgrade.material} ×{price.cost}{upgrade.secondMaterial ? ` · ${upgrade.secondMaterial} ×${price.secondCost}` : ''}</span>
-          <button className="secondary-button wide" disabled={!canUpgrade || !affordable || level >= maxLevel} onClick={() => onAction('upgradeRod', { rodId: rod.id, upgradeId: upgrade.id })}>{level >= maxLevel ? '已满级' : '升级'}</button>
+          <button className="secondary-button wide" disabled={busy || !canUpgrade || !affordable || level >= maxLevel} onClick={() => onAction('upgradeRod', { rodId: rod.id, upgradeId: upgrade.id }, `${upgrade.label} 已提升`)}>{level >= maxLevel ? '已满级' : '升级'}</button>
         </div>
       })}
 
@@ -2329,14 +2326,13 @@ function DurabilityDrawer({ state, onClose, onAction }) {
         <div className="drawer-section-title">材料</div>
         <div className="drawer-material-list">
           {Object.entries(MATERIALS).map(([name, meta]) => <div className="drawer-material-item" key={name} title={name}>
-            <span className="drawer-material-icon" style={{ color: meta.color }}>{meta.icon}</span>
+            <ItemIllustration item={name} fallback={<span style={{ color: meta.color }}>{meta.icon}</span>} />
             <span className="drawer-material-name">{name}</span>
             <b className="drawer-material-qty">{state.inventory[name] || 0}</b>
           </div>)}
         </div>
       </div>
-    </aside>
-  </>
+  </GameDialog>
 }
 
 createRoot(document.getElementById('root')).render(<AuthGate />)

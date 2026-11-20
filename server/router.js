@@ -31,7 +31,7 @@ export function createRouter() {
         if (route.method !== method) continue
         const params = {}
         route.keys.forEach((key, index) => { params[key] = decodeURIComponent(found[index + 1]) })
-        return { handler: route.handler, params }
+        return { handler: route.handler, params, pattern: route.pattern }
       }
       return allow.length ? { methodMismatch: true, allow } : null
     },

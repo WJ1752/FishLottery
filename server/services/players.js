@@ -1,5 +1,5 @@
 import { get, run, transaction } from '../db/index.js'
-import { advanceFishing, advanceGuide, syncGuideFocus, applyConfig, applyDrawNumbers, autoRepairRod, createInitialState, extractPlayerState, fxDayClose, fxDayIndex, getBatchId, hydrateState, mergeFxWorld, redactScratchFaces, refreshBlackMarketDay, settleFxDays, settleMachines } from '../../src/game.js'
+import { advanceDepthSurveys, advanceFishing, advanceGuide, syncGuideFocus, applyConfig, applyDrawNumbers, autoRepairRod, createInitialState, extractPlayerState, fxDayClose, fxDayIndex, getBatchId, hydrateState, mergeFxWorld, redactScratchFaces, refreshBlackMarketDay, refreshDailyContracts, settleFxDays, settleMachines } from '../../src/game.js'
 import { cryptoRandom } from '../lib/rng.js'
 import { now } from '../lib/clock.js'
 import { appendFlowInTransaction, diffFlows, readToday, readWorld, settleWorld } from './market.js'
@@ -142,6 +142,8 @@ function economySignature(state) {
     state.rods?.map((rod) => [rod.id, rod.durability, rod.levels, rod.status]),
     state.warehouseLevel,
     state.stats,
+    state.daily,
+    state.depthSurveys,
     state.settings,
     // 逐个解锁：层级变化要推一次完整 me，导航才会出现新页签。
     state.guide?.stage,
@@ -218,14 +220,18 @@ function reconcilePlayer(db, userId, config, world, { configVersion, capMs, forc
   state = refreshed.state
 
   // 逐个解锁：每轮同步推进一次，跨过需要赠币/赠材料的步骤时在这里发放一次。
-  const guided = advanceGuide(state, at)
+  const guided = advanceGuide(advanceDepthSurveys(refreshDailyContracts(state, at)), at)
   state = syncGuideFocus(guided.state, at)
   const guideChanged = guided.changed || state !== guided.state
 
   const changed = !version || forceChanged || configChanged || refreshed.changed || settledChanged || guideChanged || economySignature(state) !== before
   const nextVersion = changed ? savePlayer(db, userId, state, version) : version
   // 进度每秒都在动，所以即使经济状态没变也要把时间戳落库，保证离线追算的起点准确。
-  if (!changed) run(db, 'UPDATE players SET state = ?, updated_at = ? WHERE user_id = ?', JSON.stringify(extractPlayerState({ ...state, updatedAt: at })), at, Number(userId))
+  const clocksChanged = state.fishing?.lastTickAt !== loaded.fishing?.lastTickAt ||
+    Object.entries(state.machines?.owned || {}).some(([id, machine]) => machine.lastSettledAt !== loaded.machines?.owned?.[id]?.lastSettledAt)
+  if (!changed && clocksChanged) {
+    run(db, 'UPDATE players SET state = ?, updated_at = ? WHERE user_id = ?', JSON.stringify(extractPlayerState({ ...state, updatedAt: at })), at, Number(userId))
+  }
   return { state, version: nextVersion, changed }
 }
 

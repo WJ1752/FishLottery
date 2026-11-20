@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Anchor, Check } from 'lucide-react'
 import { api, ApiError } from './api'
+import { harborArt } from './art'
 
 function useSubmit() {
   const [busy, setBusy] = useState(false)
@@ -23,21 +24,28 @@ function useSubmit() {
   return { busy, error, setError, run }
 }
 
-function AuthShell({ title, children, footer }) {
-  return <div className="auth-shell">
-    <div className="auth-card panel">
-      <div className="auth-brand">
-        <div className="brand-mark"><Anchor size={20} strokeWidth={2.2} /></div>
-        <div><strong>深海鱼市</strong></div>
+function AuthShell({ title, children, footer, service = null }) {
+  return <main className="auth-shell auth-entry">
+    <div className="auth-landscape">
+      <img src={harborArt} alt="" decoding="async" fetchPriority="high" />
+      <div className="auth-landscape-copy">
+        <div className="brand-mark"><Anchor size={25} strokeWidth={1.8} /></div>
+        <strong>深海鱼市</strong>
+        <p>出海垂钓，带着鱼获回到潮汐商会。</p>
       </div>
-      <h1>{title}</h1>
-      {children}
-      {footer && <div className="auth-footer">{footer}</div>}
     </div>
-  </div>
+    <div className="auth-entry-form">
+      <section className="auth-card panel">
+        <h1>{title}</h1>
+        {service?.message && <div className={`service-bulletin ${service.mode === 'maintenance' ? 'service-paused' : ''}`} role="status"><strong>{service.mode === 'maintenance' ? '维护中' : '港口公告'}</strong><span>{service.message}</span></div>}
+        {children}
+        {footer && <div className="auth-footer">{footer}</div>}
+      </section>
+    </div>
+  </main>
 }
 
-export function LoginPage({ notice, onAuthenticated, onSwitchToRegister }) {
+export function LoginPage({ notice, service, onAuthenticated, onSwitchToRegister }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [challenge, setChallenge] = useState(null)
@@ -67,6 +75,7 @@ export function LoginPage({ notice, onAuthenticated, onSwitchToRegister }) {
 
   if (challenge) {
     return <AuthShell
+      service={service}
       title="两步验证"
       footer={<button className="text-button" disabled={busy} onClick={() => { setChallenge(null); setError('') }}>返回登录</button>}
     >
@@ -83,6 +92,7 @@ export function LoginPage({ notice, onAuthenticated, onSwitchToRegister }) {
   }
 
   return <AuthShell
+    service={service}
     title="登录"
     footer={<>还没有账号？<button className="text-button" disabled={busy} onClick={onSwitchToRegister}>注册</button></>}
   >
@@ -102,7 +112,7 @@ export function LoginPage({ notice, onAuthenticated, onSwitchToRegister }) {
   </AuthShell>
 }
 
-export function RegisterPage({ onAuthenticated, onSwitchToLogin }) {
+export function RegisterPage({ service, onAuthenticated, onSwitchToLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -121,6 +131,7 @@ export function RegisterPage({ onAuthenticated, onSwitchToLogin }) {
   }
 
   return <AuthShell
+    service={service}
     title="注册"
     footer={<>已有账号？<button className="text-button" disabled={busy} onClick={onSwitchToLogin}>登录</button></>}
   >

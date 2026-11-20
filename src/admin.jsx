@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, ChevronDown, CirclePlus, Coins, Copy, Gift, Hammer, Plus, RotateCcw, Save, Skull, Flag, SlidersHorizontal, Sparkles, Ticket, Trash2, TrendingUp, Users, Waves } from 'lucide-react'
+import { Activity, BarChart3, ChevronDown, CirclePlus, Coins, Copy, Gift, Hammer, Plus, RotateCcw, Save, Search, ShieldCheck, Skull, Flag, SlidersHorizontal, Sparkles, Ticket, Trash2, TrendingUp, Users, Waves } from 'lucide-react'
 import { COIN, DEPTHS, GUIDE_STEP_IDS, LOTTERY_HISTORY_DEFAULT, LOTTERY_HISTORY_MAX, LOTTERY_HISTORY_MIN, MATERIALS, SCRATCH_DEFAULT_SLOTS, SCRATCH_MAX_SLOTS, SCRATCH_MIN_SLOTS, TRAITS, addLotteryType, addRod, addScratchType, blackSuperValue, fishQuotePrice, fxDayStart, hitDistribution, normalizeFx, scratchGridLayout, scratchPoolSnapshot, scratchPoolStats, tierForPrice } from './game'
 import { TRAIT_EFFECT_TYPES, combinationBiteTable, effectSummary, normalizeTrait } from './traits'
 import { FxCandles, FxFlowBars, FX_GRAINS, decodeCandleRows, fxGrainLabel } from './fx-chart'
-import { api } from './api'
+import { api, request } from './api'
 import { StepUpPage, TotpSetupPage } from './auth'
+import { harborArt, itemArt } from './art.js'
+import './admin-ops.css'
 
 const MATERIAL_NAMES = Object.keys(MATERIALS)
 const cn = (...values) => values.filter(Boolean).join(' ')
@@ -72,9 +74,13 @@ function ScratchCardPreview({ type }) {
     <div className="scratch-card preview-card" style={{ '--card-color': type.cardColor, '--coat': type.coatColor }}>
       <div className="scratch-stage">
         <div className="scratch-face" style={{ gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))` }}>
-          {face.map((prize, index) => <div className="scratch-slot" key={index} title={prize ? `${prize.name} ×${prize.qty}` : '待揭晓'}>
-            {prize ? <i style={{ color: prize.kind === 'coin' ? COIN.color : MATERIALS[prize.name]?.color }}>{prize.kind === 'coin' ? COIN.icon : MATERIALS[prize.name]?.icon || '✳'}</i> : <span className="scratch-slot-empty">?</span>}
-          </div>)}
+          {face.map((prize, index) => {
+            const art = prize && itemArt(prize.kind === 'coin' ? 'coin' : prize.name)
+            return <div className="scratch-slot" key={index} title={prize ? `${prize.name} ×${prize.qty}` : '待揭晓'}>
+              {art ? <img className="ops-preview-item" src={art} alt="" /> :
+                prize ? <i style={{ color: prize.kind === 'coin' ? COIN.color : MATERIALS[prize.name]?.color }}>{prize.kind === 'coin' ? COIN.icon : MATERIALS[prize.name]?.icon || '✳'}</i> : <span className="scratch-slot-empty">?</span>}
+            </div>
+          })}
         </div>
       </div>
     </div>
@@ -82,15 +88,16 @@ function ScratchCardPreview({ type }) {
 }
 
 function TicketPreview({ type }) {
-  const sample = Array.from({ length: type.pick }, (_, index) => type.min + index * 3).filter((n) => n <= type.max)
-  const hitSet = new Set(sample.slice(0, 3))
+  const sample = Array.from({ length: type.pick }, (_, index) => type.min + index).filter((n) => n <= type.max)
+  const hits = Math.min(3, sample.length)
+  const hitSet = new Set(sample.slice(0, hits))
   return <div className="preview-stage">
     <article className="numbered-ticket-card preview-card" style={{ '--card-color': type.cardColor, '--ticket-accent': type.accentColor }}>
       <div className="numbered-ticket-top"><div><strong>{type.name}</strong></div><span className="status-pill status-success">可领取</span></div>
       <div className="numbered-ticket-sub"><span>本期开奖</span><span>{type.min} — {type.max}</span></div>
       <div className="numbered-ticket-numbers">{sample.map((number) => <span key={number} className={hitSet.has(number) ? 'number-hit' : ''}>{number}</span>)}</div>
-      <div className="numbered-ticket-result"><strong>3 <small>命中</small></strong><span>{(type.prizes?.[3] || []).map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、') || '未中奖'}</span></div>
-      <div className="numbered-ticket-foot"><span>{type.note}</span><Ticket size={14} /></div>
+      <div className="numbered-ticket-result"><strong>{hits} <small>命中</small></strong><span>{(type.prizes?.[hits] || []).map((reward) => `${reward.name}${reward.qty > 1 ? ` ×${reward.qty}` : ''}`).join('、') || '未中奖'}</span></div>
+      <div className="numbered-ticket-foot"><span>{type.note}</span><img className="ops-preview-ticket" src={itemArt('ticket')} alt="" /></div>
     </article>
   </div>
 }
@@ -621,7 +628,7 @@ function MachineAdmin({ config, patch }) {
   })
   const setModule = (id, key, value) => update((cur) => ({ ...cur, modules: { ...(cur.modules || {}), [id]: { ...(cur.modules?.[id] || {}), [key]: value } } }))
   const parseEff = (text) => String(text).split(/[,，\s]+/).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0).slice(0, 24)
-  const ids = Object.keys(list).filter((id) => id !== 'watcher')
+  const ids = Object.keys(list)
 
   return <>
     <div className="admin-sync"><SlidersHorizontal size={15} /><span>投币机器 · 保存后全服生效</span><b>{ids.length} 台机器</b><b>{Object.keys(modules).length} 个模块</b></div>
@@ -890,16 +897,16 @@ function BlackMarketAdmin({ config, patch }) {
   </>
 }
 
-function FxAdmin({ config, patch, onRefresh, onGateError }) {
+function FxAdmin({ config, patch, onRefresh, onGateError, maintenance }) {
   const [resetting, setResetting] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [resetVersion, setResetVersion] = useState(0)
   const clear = async () => {
-    if (resetting || !window.confirm('清空全服行情历史，将所有标的恢复到基准价？')) return
+    if (resetting || !maintenance || !window.confirm('清空全服行情历史，将所有标的恢复到基准价？')) return
     setResetting(true)
     setFeedback(null)
     try {
-      await api.adminResetFx()
+      await request('/api/admin/fx/reset', { method: 'POST', body: { confirmation: 'RESET_FX' } })
       setResetVersion((value) => value + 1)
       setFeedback({ text: '已清空行情历史' })
       onRefresh?.()
@@ -935,10 +942,10 @@ function FxAdmin({ config, patch, onRefresh, onGateError }) {
     <SectionHead title="行情维护" count="真实数据" />
     <section className="panel admin-card">
       <div className="admin-actions">
-        <button className="secondary-button" disabled={resetting} onClick={clear}><RotateCcw size={14} /> {resetting ? '清空中…' : '清空行情历史'}</button>
+        <button className="secondary-button danger" disabled={resetting || !maintenance} onClick={clear}><RotateCcw size={14} /> {resetting ? '清空中…' : '清空行情历史'}</button>
       </div>
       {feedback && <p className={feedback.error ? 'auth-error' : 'auth-notice'} role="status">{feedback.text}</p>}
-      <div className="pricing-formula">行情只由玩家上钩与商会出货生成，后台不提供任何模拟填充。清空后所有标的回到基准价，不影响持仓与鱼币。</div>
+      <div className="pricing-formula">进入维护状态后可以清空行情。重置会将标的恢复到基准价，玩家持仓与鱼币保留。</div>
     </section>
 
     <SectionHead title="词条标的" count={`${Object.keys(fx.traits).length} 个`} />
@@ -1256,7 +1263,7 @@ function MerchantChart({ config, maxTrait, maxCombo }) {
 }
 
 export default function AdminPage({ config: savedConfig, configVersion, onConfigSaved }) {
-  const [section, setSection] = useState('scratch')
+  const [section, setSection] = useState('operations')
   // 草稿模式：所有编辑只写本地 draft，点「保存配置」才提交到服务端并让所有玩家生效。
   const [draft, setDraft] = useState(() => savedConfig)
   const [dirty, setDirty] = useState(false)
@@ -1321,22 +1328,23 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
     setDirty(false)
     setError('')
   }
+  const acceptConfig = (result, message) => {
+    if (result.configVersion >= latestRef.current.version) {
+      latestRef.current = { config: result.config, version: result.configVersion }
+    }
+    draftVersionRef.current = result.configVersion
+    setDraft(result.config)
+    setDirty(false)
+    setNotice(message)
+    onConfigSaved?.(result.configVersion, result.config)
+  }
   const save = async () => {
     if (!dirty || saving) return
     setSaving(true)
     setError('')
     try {
       const result = await api.adminSaveConfig(draft, draftVersionRef.current)
-      if (result.configVersion >= latestRef.current.version) {
-        latestRef.current = { config: result.config, version: result.configVersion }
-      }
-      draftVersionRef.current = result.configVersion
-      setDraft(result.config)
-      setDirty(false)
-      setNotice('已保存')
-      // 把保存后的配置一起回传给父组件：父组件持有同一份状态，
-      // 只更新版本号会让它继续拿旧配置覆盖这份草稿。
-      onConfigSaved?.(result.configVersion, result.config)
+      acceptConfig(result, '配置已发布')
     } catch (err) {
       if (handleGateError(err)) return
       if (err.code === 'CONFIG_CONFLICT') {
@@ -1361,66 +1369,223 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
   </div>
 
   const conflict = dirty && Math.max(Number(configVersion) || 0, overview.configVersion) > draftVersionRef.current
-  return <>
-    <div className="page-header"><div><h1>管理后台</h1></div></div>
-    <div className={cn('admin-savebar', dirty && 'is-dirty')}>
-      <span className="admin-savebar-state">{dirty ? '未保存' : '已同步'}</span>
+  const maintenance = overview.service?.mode === 'maintenance'
+  const showingEditor = SECTIONS.some((item) => item.id === section)
+  return <div className="ops-console">
+    <div className="page-header ops-heading" style={{ '--ops-harbor': `url("${harborArt}")` }}><div>
+      <h1>运营控制台</h1>
+      <p><ShieldCheck size={15} aria-hidden="true" /> {overview.me.username} · 管理员会话</p>
+    </div><button className="secondary-button" onClick={loadOverview}><RotateCcw size={14} /> 刷新</button></div>
+    <nav className="admin-tabs ops-tabs" aria-label="运营控制台">
+      <button aria-pressed={section === 'operations'} className={cn('admin-tab', section === 'operations' && 'admin-tab-active')} onClick={() => setSection('operations')}><Activity size={16} /> 运营</button>
+      <button aria-pressed={section === 'users'} className={cn('admin-tab', section === 'users' && 'admin-tab-active')} onClick={() => setSection('users')}><Users size={16} /> 账号</button>
+      {SECTIONS.map(({ id, label, icon: Icon }) => <button key={id} aria-pressed={section === id} className={cn('admin-tab', section === id && 'admin-tab-active')} onClick={() => setSection(id)}><Icon size={16} /> {label}</button>)}
+    </nav>
+    {(showingEditor || dirty) && <div className={cn('admin-savebar', dirty && 'is-dirty')}>
+      <span className="admin-savebar-state">{dirty ? '未发布的配置' : `配置 v${overview.configVersion}`}</span>
       <div className="admin-savebar-actions">
         <button className="secondary-button" disabled={!dirty || saving} onClick={discard}><RotateCcw size={14} /> {conflict ? '载入最新配置' : '撤销'}</button>
-        <button className="primary-button" disabled={!dirty || saving || conflict} onClick={save}><Save size={14} /> {saving ? '保存中…' : '保存配置'}</button>
+        <button className="primary-button" disabled={!dirty || saving || conflict} onClick={save}><Save size={14} /> {saving ? '发布中…' : '发布配置'}</button>
       </div>
-    </div>
+    </div>}
     {conflict && !error && <p className="auth-error" role="status">全服配置已有更新。载入后可继续编辑。</p>}
     {(error || loadError || notice) && <p className={error || loadError ? 'auth-error' : 'auth-notice'} role="status">{error || loadError || notice}</p>}
-    <div className="admin-tabs" role="tablist">
-      {SECTIONS.map(({ id, label, icon: Icon }) => <button key={id} role="tab" aria-selected={section === id} className={cn('admin-tab', section === id && 'admin-tab-active')} onClick={() => setSection(id)}><Icon size={16} /> {label}</button>)}
-      <button role="tab" aria-selected={section === 'users'} className={cn('admin-tab', section === 'users' && 'admin-tab-active')} onClick={() => setSection('users')}><Users size={16} /> 用户</button>
-    </div>
     <fieldset disabled={saving} style={{ display: 'contents' }}>
+      {section === 'operations' && <OperationsAdmin overview={overview} dirty={dirty} onConfig={acceptConfig} onRefresh={loadOverview} onGateError={handleGateError} />}
       {section === 'scratch' && <ScratchAdmin config={draft} patch={patch} />}
       {section === 'lottery' && <LotteryAdmin config={draft} patch={patch} />}
       {section === 'rod' && <RodAdmin config={draft} patch={patch} />}
       {section === 'trait' && <TraitAdmin config={draft} patch={patch} />}
       {section === 'depth' && <DepthAdmin config={draft} patch={patch} />}
       {section === 'merchant' && <MerchantAdmin config={draft} patch={patch} />}
-      {section === 'fx' && <FxAdmin config={draft} patch={patch} onRefresh={loadOverview} onGateError={handleGateError} />}
+      {section === 'fx' && <FxAdmin config={draft} patch={patch} onRefresh={loadOverview} onGateError={handleGateError} maintenance={maintenance} />}
       {section === 'black' && <BlackMarketAdmin config={draft} patch={patch} />}
       {section === 'machine' && <MachineAdmin config={draft} patch={patch} />}
       {section === 'guide' && <GuideAdmin config={draft} patch={patch} />}
       {section === 'users' && <UsersAdmin overview={overview} me={overview.me} onRefresh={loadOverview} onGateError={handleGateError} />}
     </fieldset>
+  </div>
+}
+
+const serviceTime = (at) => at ? new Date(at).toLocaleString('zh-CN') : '—'
+
+function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) {
+  const service = overview.service
+  const [draft, setDraft] = useState(() => service)
+  const [pending, setPending] = useState('')
+  const [feedback, setFeedback] = useState(null)
+  const previousService = useRef(service)
+  const runtime = overview.telemetry
+  const job = runtime?.jobs.world
+  const edits = draft.mode !== service.mode || draft.message !== service.message
+  const conflict = draft.version !== service.version
+
+  useEffect(() => {
+    const previous = previousService.current
+    previousService.current = service
+    setDraft((current) => current.version < service.version && current.mode === previous.mode && current.message === previous.message ? service : current)
+  }, [service])
+
+  const publish = async (event) => {
+    event.preventDefault()
+    if (pending || conflict || !edits) return
+    if (draft.mode === 'maintenance' && service.mode !== 'maintenance' &&
+      !window.confirm('暂停所有玩家的游戏操作并发布这条维护公告？')) return
+    setPending('service')
+    setFeedback(null)
+    try {
+      const result = await request('/api/admin/service', { method: 'PUT', body: draft })
+      setDraft(result.service)
+      await onRefresh()
+      setFeedback({ text: '服务状态已发布' })
+    } catch (err) {
+      if (err.code === 'SERVICE_CONFLICT') await onRefresh()
+      if (!onGateError(err)) setFeedback({ error: true, text: err.message || '无法发布服务状态' })
+    } finally {
+      setPending('')
+    }
+  }
+
+  const rollback = async (version) => {
+    if (dirty || pending || !window.confirm(`恢复配置 v${version} 并发布为新版本？玩家存档保持现状。`)) return
+    setPending('rollback')
+    setFeedback(null)
+    try {
+      const result = await request('/api/admin/config/rollback', {
+        method: 'POST', body: { version, configVersion: overview.configVersion },
+      })
+      onConfig(result, `配置 v${version} 已恢复为 v${result.configVersion}`)
+      await onRefresh()
+    } catch (err) {
+      if (err.code === 'CONFIG_CONFLICT') await onRefresh()
+      if (!onGateError(err)) setFeedback({ error: true, text: err.message || '无法恢复配置' })
+    } finally {
+      setPending('')
+    }
+  }
+
+  return <>
+    <section className="ops-metrics" aria-label="服务概况">
+      <div className="panel ops-metric"><span>开放状态</span><strong>{service.mode === 'maintenance' ? '维护中' : '开放'}</strong><small>{service.updatedAt ? serviceTime(service.updatedAt) : '默认开放'}</small></div>
+      <div className="panel ops-metric"><span>玩家账号</span><strong>{overview.stats.players.toLocaleString('zh-CN')}</strong><small>{overview.stats.sessions.toLocaleString('zh-CN')} 个有效会话</small></div>
+      <div className="panel ops-metric"><span>近 5 分钟 API 请求</span><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></div>
+      <div className="panel ops-metric"><span>开奖与行情结算</span><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></div>
+    </section>
+
+    <div className="ops-control-grid">
+      <section className="panel admin-card ops-control">
+        <SectionHead title="服务状态与公告" count="登录页和游戏内可见" />
+        <form className="ops-status-form" onSubmit={publish}>
+          <Field label="游戏操作">
+            <select className="admin-input" value={draft.mode} disabled={Boolean(pending)} onChange={(event) => setDraft({ ...draft, mode: event.target.value })}>
+              <option value="open">开放游戏操作</option>
+              <option value="maintenance">暂停游戏操作</option>
+            </select>
+          </Field>
+          <Field label="玩家公告" hint="最多 240 字。开放时留空可撤下公告。维护期间仍能登录、浏览存档与自动结算。">
+            <textarea className="admin-input ops-notice-input" rows={4} maxLength={240} value={draft.message} disabled={Boolean(pending)} onChange={(event) => setDraft({ ...draft, message: event.target.value })} />
+          </Field>
+          {conflict && <p className="auth-error" role="status">另一位管理员已更新服务状态。请载入最新状态后再编辑。</p>}
+          <div className="admin-actions">
+            {conflict && <button className="secondary-button" type="button" onClick={() => setDraft(service)}>载入最新状态</button>}
+            <button className="primary-button" disabled={Boolean(pending) || !edits || conflict || (draft.mode === 'maintenance' && !draft.message.trim())}>
+              {pending === 'service' ? '发布中…' : '发布服务状态'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel admin-card ops-control">
+        <SectionHead title="配置版本" count={`当前 v${overview.configVersion}`} />
+        <div className="ops-versions">
+          {overview.configHistory.map((item) => <div className="ops-version" key={item.version}>
+            <div><strong>v{item.version}</strong><small>{serviceTime(item.publishedAt)}</small></div>
+            <button className="secondary-button" disabled={dirty || Boolean(pending)} onClick={() => rollback(item.version)}>恢复 v{item.version}</button>
+          </div>)}
+          {!overview.configHistory.length && <p className="admin-empty-line">发布新配置后，这里可恢复最近的历史版本。</p>}
+        </div>
+      </section>
+    </div>
+    {feedback && <p className={feedback.error ? 'auth-error' : 'auth-notice'} role="status">{feedback.text}</p>}
+
+    <SectionHead title="操作记录" count={`最近 ${overview.audit.length} 条`} />
+    <section className="panel admin-card">
+      <div className="admin-table">
+        <div className="admin-table-head admin-audit-head"><span>操作</span><span>账号</span><span>时间</span></div>
+        {overview.audit.map((row) => <div className="admin-table-row admin-audit-row" key={row.id}>
+          <span>{row.action}{row.detail ? ` · ${row.detail}` : ''}</span>
+          <span>{row.username || '—'}</span>
+          <span>{serviceTime(row.at)}</span>
+        </div>)}
+        {!overview.audit.length && <p className="admin-empty-line">暂无操作记录</p>}
+      </div>
+    </section>
   </>
 }
 
-// 用户管理：角色、重置 2FA、强制下线，以及最近的审计记录。
+// 客服按账号查找存档摘要和状态，使用 ID 游标翻页。
 function UsersAdmin({ overview, me, onRefresh, onGateError }) {
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState('')
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [cursors, setCursors] = useState([null])
+  const [page, setPage] = useState(() => ({ users: overview.users, nextCursor: overview.nextCursor }))
+  const [loading, setLoading] = useState(false)
+  const requestRef = useRef(0)
+  const cursor = cursors.at(-1)
+  const load = useCallback(async () => {
+    const requestId = ++requestRef.current
+    const search = new URLSearchParams({ q: query })
+    if (cursor !== null) search.set('cursor', String(cursor))
+    setLoading(true)
+    setError('')
+    try {
+      const result = await request(`/api/admin/users?${search}`)
+      if (requestId === requestRef.current) setPage(result)
+    } catch (err) {
+      if (requestId === requestRef.current && !onGateError(err)) setError(err.message || '无法查询账号')
+    } finally {
+      if (requestId === requestRef.current) setLoading(false)
+    }
+  }, [cursor, onGateError, query])
+  useEffect(() => {
+    void load()
+    return () => { requestRef.current += 1 }
+  }, [load])
+
   const act = async (id, fn, confirmation) => {
     if (busyId !== null || (confirmation && !window.confirm(confirmation))) return
     setBusyId(id)
     setError('')
     try {
       await fn()
-      await onRefresh()
+      await Promise.all([load(), onRefresh()])
     } catch (err) {
       if (!onGateError(err)) setError(err.message || '操作失败')
     } finally {
       setBusyId(null)
     }
   }
+  const search = (event) => {
+    event.preventDefault()
+    const term = input.trim()
+    if (term === query && cursor === null) return void load()
+    setQuery(term)
+    setCursors([null])
+  }
   return <>
-    <SectionHead title="用户" count={`${overview.users.length} 个账号`} />
+    <SectionHead title="玩家账号" count={`第 ${cursors.length} 页`} />
     <section className="panel admin-card">
-      <div className="admin-sync">
-        <Users size={15} /><span>角色变更 / 重置 2FA / 强制下线</span>
-        <b>{overview.stats.players} 玩家</b><b>{overview.stats.sessions} 在线会话</b>
-      </div>
+      <form className="ops-search" onSubmit={search}>
+        <label className="admin-field"><span>查找账号</span><input className="admin-input" maxLength={100} value={input} onChange={(event) => setInput(event.target.value)} placeholder="用户名、显示名或已验证邮箱" /></label>
+        <button className="secondary-button" disabled={busyId !== null}><Search size={15} /> 查询</button>
+      </form>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <div className="admin-user-list">
-        {overview.users.map((item) => <div className="admin-user-row" key={item.id}>
+      <div className="admin-user-list" aria-busy={loading}>
+        {page.users.map((item) => <div className="admin-user-row" key={item.id}>
           <div>
-            <strong>{item.username}{item.id === me.id ? '（我）' : ''}</strong>
+            <strong>{item.username}{item.id === me.id ? '（我）' : ''}{item.disabled ? ' · 已停用' : ''}</strong>
             <small>{item.role === 'admin' ? '管理员' : '玩家'} · {item.totpEnabled ? '2FA 已启用' : '2FA 未启用'} · {item.emailVerified ? `邮箱 ${item.email}` : '邮箱未验证'} · 注册 {new Date(item.createdAt).toLocaleDateString('zh-CN')}</small>
             <small className="admin-user-stats">鱼币 {Number(item.coins || 0).toLocaleString('zh-CN')} · 未刮刮刮乐 {item.scratchCards || 0} 张 · 空白彩票 {item.blankTickets || 0} 张</small>
           </div>
@@ -1431,21 +1596,16 @@ function UsersAdmin({ overview, me, onRefresh, onGateError }) {
               : <button className="secondary-button" disabled={busyId !== null} onClick={() => act(item.id, () => api.adminSetRole(item.id, 'admin'), `将 ${item.username} 提升为管理员？`)}>提升为管理员</button>}
             <button className="secondary-button" disabled={!item.totpEnabled || busyId !== null} onClick={() => act(item.id, () => api.adminReset2fa(item.id), `重置 ${item.username} 的两步验证并结束其所有会话？`)}>重置 2FA</button>
             <button className="secondary-button danger" disabled={item.id === me.id || busyId !== null} onClick={() => act(item.id, () => api.adminLogoutUser(item.id), `结束 ${item.username} 的所有会话？`)}>强制下线</button>
+            <button className={cn('secondary-button', !item.disabled && 'danger')} disabled={item.id === me.id || busyId !== null} onClick={() =>
+              act(item.id, () => request(`/api/admin/users/${item.id}/availability`, { method: 'POST', body: { disabled: !item.disabled } }),
+                item.disabled ? `恢复 ${item.username} 登录？` : `停用 ${item.username} 并结束其所有会话？`)}>{item.disabled ? '恢复账号' : '停用账号'}</button>
           </div>
         </div>)}
+        {!page.users.length && !loading && <p className="admin-empty-line">没有符合查询条件的账号。</p>}
       </div>
-    </section>
-
-    <SectionHead title="最近操作" count={`${overview.audit.length} 条`} />
-    <section className="panel admin-card">
-      <div className="admin-table">
-        <div className="admin-table-head admin-audit-head"><span>操作</span><span>账号</span><span>时间</span></div>
-        {overview.audit.map((row) => <div className="admin-table-row admin-audit-row" key={row.id}>
-          <span>{row.action}{row.detail ? ` · ${row.detail}` : ''}</span>
-          <span>{row.username || '—'}</span>
-          <span>{new Date(row.at).toLocaleString('zh-CN')}</span>
-        </div>)}
-        {!overview.audit.length && <p className="admin-empty-line">暂无操作记录</p>}
+      <div className="ops-pagination">
+        <button className="secondary-button" disabled={cursors.length === 1 || loading || busyId !== null} onClick={() => setCursors((current) => current.slice(0, -1))}>上一页</button>
+        <button className="secondary-button" disabled={page.nextCursor === null || loading || busyId !== null} onClick={() => setCursors((current) => [...current, page.nextCursor])}>下一页</button>
       </div>
     </section>
   </>

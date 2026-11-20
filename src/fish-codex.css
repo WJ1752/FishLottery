@@ -1,0 +1,106 @@
+.fish-codex {
+  margin-bottom: 1rem;
+  padding: clamp(.85rem, 2.5vw, 1.35rem);
+  color: var(--text);
+}
+
+.fish-codex-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .55rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.fish-codex-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.fish-codex-heading p,
+.fish-codex-record p {
+  margin: .35rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: .78rem;
+}
+
+.fish-codex-count {
+  align-self: center;
+  white-space: nowrap;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fish-codex-count strong,
+.fish-codex-check {
+  color: var(--brand, #48a5a2);
+}
+
+.fish-codex-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-auto-rows: 1fr;
+  gap: .65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fish-codex-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+}
+
+.fish-codex-plate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 62%, #214653, #10242f 78%);
+  min-height: 6rem;
+  aspect-ratio: 2 / 1;
+}
+
+.fish-codex-plate img {
+  display: block;
+  width: min(100%, 9.5rem);
+  height: 100%;
+  max-height: 7rem;
+  object-fit: contain;
+}
+
+.fish-codex-check {
+  position: absolute;
+  top: .55rem;
+  right: .55rem;
+  color: #82e6ce;
+}
+
+.fish-codex-record {
+  padding: .6rem .7rem .75rem;
+}
+
+.fish-codex-record h3 {
+  margin: 0;
+  font-size: .88rem;
+}
+
+.fish-codex-record span {
+  display: block;
+  margin-top: .45rem;
+  color: var(--muted);
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 550px) {
+  .fish-codex-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

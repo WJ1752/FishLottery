@@ -110,7 +110,11 @@ export const MIME = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.ico': 'image/x-icon',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
@@ -135,10 +139,30 @@ export function sendStatic(req, res, root, pathname) {
   if (!stat.isFile()) return false
   const ext = extname(target).toLowerCase()
   const immutable = /\/assets\/.+-[A-Za-z0-9_]{8,}\./.test(pathname)
+  // 公共美术是稳定文件名，回访时用验证器跳过重复图片下载。
+  const etag = `W/"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`
+  const modified = stat.mtime.toUTCString()
+  const validators = {
+    'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'ETag': etag,
+    'Last-Modified': modified,
+  }
+  const ifNoneMatch = req.headers['if-none-match']
+  const unchanged = ifNoneMatch
+    ? ifNoneMatch.split(',').some((entry) => {
+      const tag = entry.trim()
+      return tag === '*' || tag.replace(/^W\//, '') === etag.slice(2)
+    })
+    : Date.parse(req.headers['if-modified-since']) >= Date.parse(modified)
+  if (unchanged) {
+    res.writeHead(304, validators)
+    res.end()
+    return true
+  }
   res.writeHead(200, {
+    ...validators,
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Content-Length': stat.size,
-    'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
   })
   if (req.method === 'HEAD') {
     res.end()

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from 'lucide-react'
 
 // 深海FX 图表渲染层（只画，不算）。
 //
@@ -17,7 +18,7 @@ export const fmtPct = (value) => `${value >= 0 ? '+' : ''}${(value * 100).toFixe
 export const clampNum = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0))
 
 // 可缩放拖动的 K 线图：主图蜡烛（红涨绿跌）+ 底部成交量。
-// 滚轮缩放（以光标位置为锚点），按住拖动平移，双击复位到最新。
+// Alt+滚轮缩放、拖动平移，也可用按钮操作。
 export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitIndex = -1, splitLabel = '预测' }) {
   const wrapRef = useRef(null)
   const [view, setView] = useState({ start: 0, count: 0 })
@@ -50,7 +51,7 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
   const yOf = (price) => priceH - ((price - min) / span) * (priceH - 10) - 5
   const slotW = 100 / visible.length
   const bodyW = slotW * 0.62
-  const active = hover ? visible.find((bar) => bar.key === hover) : visible[visible.length - 1]
+  const active = visible.find((bar) => bar.key === hover) || visible[visible.length - 1]
 
   // 历史段与预测段之间的分界线：只有落在可见窗口里时才画。
   const splitX = splitIndex > start && splitIndex < start + count ? (splitIndex - start) * slotW : null
@@ -64,6 +65,7 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
     const node = wrapRef.current
     if (!node) return undefined
     const handle = (event) => {
+      if (!event.altKey) return
       event.preventDefault()
       const rect = node.getBoundingClientRect()
       if (!rect.width) return
@@ -94,17 +96,37 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
     }
   }
   const onPointerUp = () => setDrag(null)
-  const reset = () => setView({ start: Math.max(0, total - Math.max(6, Math.round(total / defaultZoom))), count: Math.max(6, Math.round(total / defaultZoom)) })
+  const reset = () => {
+    const nextCount = Math.max(1, Math.min(total, Math.round(defaultZoom)))
+    setView({ start: total - nextCount, count: nextCount })
+  }
+  const panBy = (direction) => {
+    setHover(null)
+    setView({ start: clampNum(start + direction * Math.max(1, Math.floor(count / 4)), 0, Math.max(0, total - count)), count })
+  }
+  const zoomBy = (factor) => {
+    const nextCount = clampNum(Math.round(count * factor), 1, total)
+    setHover(null)
+    setView({ count: nextCount, start: clampNum(start + count - nextCount, 0, total - nextCount) })
+  }
 
   if (empty) return <p className="fx-k-empty">无数据</p>
 
   return <>
+    <div className="fx-chart-controls" role="group" aria-label="K 线图控制">
+      <button className="icon-button" onClick={() => panBy(-1)} disabled={start <= 0} aria-label="查看更早行情" title="查看更早行情"><ChevronLeft size={17} /></button>
+      <button className="icon-button" onClick={() => panBy(1)} disabled={start + count >= total} aria-label="查看较新行情" title="查看较新行情"><ChevronRight size={17} /></button>
+      <button className="icon-button" onClick={() => zoomBy(.72)} disabled={count <= 1} aria-label="放大图表" title="放大图表"><Plus size={16} /></button>
+      <button className="icon-button" onClick={() => zoomBy(1.4)} disabled={count >= total} aria-label="缩小图表" title="缩小图表"><Minus size={16} /></button>
+      <button className="icon-button" onClick={reset} aria-label="返回最新行情" title="返回最新行情"><RotateCcw size={15} /></button>
+    </div>
     <div
       ref={wrapRef}
       className={cn('fx-k-wrap', drag && 'is-dragging')}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onPointerLeave={() => { setDrag(null); setHover(null) }}
       onDoubleClick={reset}
     >
@@ -139,7 +161,7 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
       <span>收 <b>{fmtPrice(active.close)}</b></span>
       <span className={cn('fx-k-chg', active.move > 0 ? 'is-up' : active.move < 0 ? 'is-down' : 'is-flat')}>{fmtPct(active.move)}</span>
       {active.volume > 0 && <span className="fx-k-meta">{active.projected ? '推演' : active.running ? '进行中' : ''}{Math.round(active.volume)} 份</span>}
-      <span className="fx-k-zoom" title="滚轮缩放 · 拖动平移 · 双击复位">{Math.min(count, total)} / {total} 根</span>
+      <span className="fx-k-zoom">{Math.min(count, total)} / {total} 根</span>
     </div>}
   </>
 }

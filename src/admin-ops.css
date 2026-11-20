@@ -1,0 +1,81 @@
+.ops-console .ops-heading {
+  margin-block-end: 18px;
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid var(--line, #2d4650);
+  border-radius: 12px;
+  color: #f0f7f7;
+  background: linear-gradient(100deg, #102b32 12%, #0e1824ae 66%, #0e182466), var(--ops-harbor) center 48% / cover, #0e1824;
+}
+
+.ops-heading p {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 0;
+  color: #afd0d1;
+}
+
+.ops-console .ops-tabs { margin-block-end: 18px; }
+
+.ops-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-block-end: 18px;
+}
+
+.ops-metric {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 15px;
+}
+
+.ops-metric strong {
+  font-size: clamp(1.2rem, 2.4vw, 1.85rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-metric span,
+.ops-metric small,
+.ops-version small { color: var(--muted, #526c75); }
+
+.ops-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ops-control,
+.ops-status-form,
+.ops-versions { display: grid; align-content: start; gap: 12px; }
+.ops-notice-input { min-height: 96px; resize: vertical; }
+.ops-versions { max-height: 320px; overflow-y: auto; }
+
+.ops-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-block-end: 1px solid var(--line, #2d4650);
+  padding-block: 6px 10px;
+}
+
+.ops-version small { display: block; margin-top: 3px; }
+.ops-preview-item { width: 58%; height: 64%; object-fit: contain; }
+.ops-preview-ticket { width: 24px; height: 18px; object-fit: contain; }
+.ops-search { display: grid; grid-template-columns: minmax(0, 420px) auto; align-items: end; justify-content: start; gap: 12px; margin-block-end: 14px; }
+.ops-pagination { display: flex; justify-content: space-between; gap: 10px; margin-block-start: 14px; }
+.ops-console .admin-user-row .auth-actions { flex-wrap: wrap; }
+
+@media (max-width: 780px) {
+  .ops-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-control-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .ops-console .admin-user-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .ops-console .admin-user-row .auth-actions { grid-column: 1 / -1; }
+  .ops-console .admin-user-row small { overflow-wrap: anywhere; }
+}

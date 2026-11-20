@@ -26,7 +26,7 @@ export const clearSessionCookie = () => cookieOptions(0)
 export function authRoutes(router) {
   router.post('/api/auth/register', async (ctx) => {
     const { username, password, displayName } = ctx.body
-    const user = registerUser(ctx.db, { username, password, displayName }, { ip: ctx.ip })
+    const user = await registerUser(ctx.db, { username, password, displayName }, { ip: ctx.ip })
     const token = createSession(ctx.db, user.id, { ip: ctx.ip, userAgent: ctx.userAgent })
     return { status: 201, body: { user: publicUser(user) }, headers: { 'Set-Cookie': setSessionCookie(token) } }
   })
@@ -34,7 +34,7 @@ export function authRoutes(router) {
   router.post('/api/auth/login', async (ctx) => {
     const { username, password } = ctx.body
     if (!username || !password) throw badRequest('MISSING_CREDENTIALS', '请输入用户名与密码')
-    const result = startLogin(ctx.db, { username, password }, { ip: ctx.ip, userAgent: ctx.userAgent })
+    const result = await startLogin(ctx.db, { username, password }, { ip: ctx.ip, userAgent: ctx.userAgent })
     if (result.totpRequired) return { status: 200, body: { totpRequired: true, challengeId: result.challengeId, expiresAt: result.expiresAt } }
     return { status: 200, body: { user: result.user, totpRequired: false }, headers: { 'Set-Cookie': setSessionCookie(result.token) } }
   })
@@ -85,7 +85,7 @@ export function authRoutes(router) {
 
   router.post('/api/auth/password', async (ctx) => {
     if (!ctx.auth) throw unauthorized()
-    return { status: 200, body: changePassword(ctx.db, ctx.auth, ctx.body) }
+    return { status: 200, body: await changePassword(ctx.db, ctx.auth, ctx.body) }
   })
 
   // 邮箱验证（可选功能）：发码 → 校验 → 解绑。
