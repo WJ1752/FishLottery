@@ -64,7 +64,7 @@ export function GuideNewBadge({ state, tabId }) {
 export const FISHING_TOUR = [
   {
     anchor: 'progress',
-    title: '等待首条鱼获',
+    title: '自动垂钓',
     text: '钓鱼会自动进行。进度充满后，鱼获会放入仓库。点「暂停钓鱼」可以收竿休息。',
   },
   {

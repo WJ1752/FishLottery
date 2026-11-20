@@ -4,10 +4,33 @@ const TAU = Math.PI * 2
 const tone = (start, duration, pitch, level, endPitch = pitch) => ({ start, duration, pitch, endPitch, level })
 const click = (start, duration, level) => ({ start, duration, level })
 
-// 短音效在浏览器合成。机械音用于出票和委托，铃音区分成交与兑奖。
+const FISH_LANDING = {
+  tones: [tone(0, 0.14, 285, 0.17, 118), tone(0.054, 0.105, 465, 0.09, 218)],
+  spray: [click(0, 0.15, 0.23), click(0.064, 0.065, 0.1)],
+}
+
+// 用短音效区分水花、鱼线、机械和铃声，音频在浏览器内合成。
 const CUES = {
   'sound-preview': {
     tones: [tone(0, 0.15, 440, 0.2), tone(0.07, 0.17, 587, 0.16)],
+  },
+  'fishing-bite': {
+    tones: [tone(0.008, 0.072, 760, 0.13, 410), tone(0.044, 0.056, 610, 0.085, 335)],
+    spray: [click(0, 0.07, 0.17)],
+  },
+  'fishing-landed': FISH_LANDING,
+  'fishing-escape': {
+    tones: [tone(0, 0.073, 295, 0.14, 580), tone(0.057, 0.15, 430, 0.13, 115)],
+    clicks: [click(0.049, 0.035, 0.22)],
+  },
+  'fishing-discovery': {
+    tones: [
+      ...FISH_LANDING.tones,
+      tone(0.13, 0.24, 523.25, 0.13),
+      tone(0.235, 0.24, 659.25, 0.12),
+      tone(0.35, 0.38, 783.99, 0.13),
+    ],
+    spray: FISH_LANDING.spray,
   },
   'ticket-print': {
     tones: [tone(0, 0.085, 153, 0.19, 102), tone(0.068, 0.14, 392, 0.15)],
@@ -121,9 +144,9 @@ function getCueBuffer(name) {
   const cached = buffers.get(name)
   if (cached) return cached
 
-  const { tones, clicks = [] } = CUES[name]
+  const { tones, clicks = [], spray = [] } = CUES[name]
   const sampleRate = context.sampleRate
-  const duration = Math.max(...[...tones, ...clicks].map((part) => part.start + part.duration))
+  const duration = Math.max(...[...tones, ...clicks, ...spray].map((part) => part.start + part.duration))
   const buffer = context.createBuffer(1, Math.ceil(duration * sampleRate), sampleRate)
   const samples = buffer.getChannelData(0)
 
@@ -134,13 +157,25 @@ function getCueBuffer(name) {
     })
   }
   let seed = 703
+  const noiseSample = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 2 ** 31 - 1
+  }
   let filtered = 0
   for (const part of clicks) {
     mix(samples, sampleRate, part, () => {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
-      const noise = seed / 2 ** 31 - 1
+      const noise = noiseSample()
       filtered = 0.72 * filtered + 0.28 * noise
       return (noise - filtered) * 0.42
+    })
+  }
+  for (const part of spray) {
+    let texture = 0
+    let drift = 0
+    mix(samples, sampleRate, part, () => {
+      texture = 0.65 * texture + 0.35 * noiseSample()
+      drift = 0.94 * drift + 0.06 * texture
+      return (texture - drift) * 0.7
     })
   }
   buffers.set(name, buffer)

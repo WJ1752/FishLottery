@@ -1,0 +1,24 @@
+.fishing-return {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.fishing-return > svg { margin-top: 3px; color: var(--accent); }
+.fishing-return h2 { margin: 0 0 3px; font-size: 16px; }
+.fishing-return p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.fishing-return p strong { color: var(--text); }
+.fishing-return-action { align-self: center; min-height: 40px; }
+.fishing-return-dismiss { grid-column: 4; justify-self: end; }
+
+@media (max-width: 520px) {
+  .fishing-return { grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; padding: 12px; }
+  .fishing-return-action { grid-column: 2; grid-row: 2; justify-self: start; }
+  .fishing-return-dismiss { grid-column: 3; grid-row: 1; }
+}

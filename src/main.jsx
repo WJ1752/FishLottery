@@ -9,7 +9,10 @@ import { LoginPage, RegisterPage, StepUpPage, TotpSetupPage } from './auth'
 import { FxCandles, clampNum, decodeCandleRows, fmtPct, fmtPrice, fxGrainLabel } from './fx-chart'
 import { depthArt, fishArt, itemArt, locationArt } from './art'
 import FishCodex from './fish-codex.jsx'
+import { FirstVoyageContract, NextVoyage, firstVoyageSteps, showFirstVoyage } from './first-voyage.jsx'
 import { getGameSoundEnabled, playGameCue, primeGameAudio, setGameSoundEnabled } from './game-audio.js'
+import { FishingReturn, useFishingReturn } from './fishing-return.jsx'
+import { FishingFeedback, useFishingFeedback } from './fishing-feedback.jsx'
 
 // 没有蜡烛时返回同一个空数组：稳定引用，避免下游 effect 因引用变化反复触发。
 const EMPTY_CANDLES = []
@@ -255,6 +258,12 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
   const blackUnlocked = Boolean(me && config && blackMarketUnlocked({ unlockedDepths: me.unlockedDepths }, config))
   const blackIntroSeen = Boolean(me?.blackMarket?.introSeen)
   const maintaining = service?.mode === 'maintenance'
+  const { report: fishingReturn, dismiss: dismissFishingReturn } = useFishingReturn(user.id, me?.fishingReturn, now)
+  const fishingFeedback = useFishingFeedback(me, {
+    active: activeTab === 'fishing' && !disconnected && !maintaining && !drawer && !depthOverlay && !navigationOpen,
+    snapshotAt: cursor.current.serverTime,
+    suppress: Boolean(me?.fishingReturn && me.fishingReturn.at === me.fishing?.lastTickAt),
+  })
   const flash = useCallback((message, error = false) => {
     if (!message) return
     window.clearTimeout(noticeTimer.current)
@@ -407,6 +416,7 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
         {disconnected && <p className="auth-error connection-status" role="status">与服务器的连接中断，正在重连。存档同步后会更新。</p>}
         {(service?.message || maintaining) && <div className={cn('service-bulletin', maintaining && 'service-paused')} role="status"><strong>{maintaining ? '维护中' : '港口公告'}</strong><span>{service.message || '游戏操作已暂停。'}</span></div>}
         {notice && <div className={cn('toast', notice.error && 'toast-error')} role={notice.error ? 'alert' : 'status'}><Sparkles size={16} />{notice.message}</div>}
+        {activeTab === 'fishing' && fishingReturn && <FishingReturn report={fishingReturn} onDismiss={dismissFishingReturn} onWarehouse={() => selectPage('npc')} onRod={() => setDrawer(true)} />}
         {guideCard && <GuideCard
           key={guideCard.stepId}
           title={STEP_LABELS[guideCard.stepId] || '新手指引'}
@@ -424,7 +434,7 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
         {activeTab === 'black-super' && blackMode && <BlackSuperPage state={state} onAction={send} busy={busy} />}
         {activeTab === 'black-shop' && blackMode && <BlackShopPage state={state} onAction={send} busy={busy} />}
         {activeTab === 'black-workshop' && blackMode && <Workshop state={state} onAction={send} busy={busy || maintaining} />}
-        {activeTab === 'fishing' && <FishingPage state={state} busy={busy || maintaining} now={now} clockOffset={clockOffset} onOpenDrawer={() => setDrawer(true)} onOpenDepths={() => setDepthOverlay(true)} onOpenMerchant={() => selectPage('npc')} onToggle={() => send('toggleFishing')} onGuideSeen={markGuideSeen} onGuideSkip={skipAllGuide} onAction={send} />}
+        {activeTab === 'fishing' && <FishingPage state={state} busy={busy || maintaining} now={now} clockOffset={clockOffset} fishingFeedback={fishingFeedback} onOpenDrawer={() => setDrawer(true)} onOpenDepths={() => setDepthOverlay(true)} onOpenMerchant={() => selectPage('npc')} onToggle={() => send('toggleFishing')} onGuideSeen={markGuideSeen} onGuideSkip={skipAllGuide} onAction={send} />}
         {activeTab === 'lottery' && <LotteryPage state={state} now={now} onAction={send} lottery={lottery} busy={busy || maintaining} />}
         {activeTab === 'scratch' && <ScratchPage state={state} onAction={send} onGuideSeen={markGuideSeen} busy={busy || maintaining} onOpenWorkshop={blackUnlocked ? () => enterBlack('black-workshop') : null} />}
         {activeTab === 'fx' && <FxPage state={state} onAction={send} fxSnapshot={fxSnapshot} busy={busy || maintaining} />}
@@ -617,7 +627,7 @@ function fishingFrame(state, at) {
   }
 }
 
-function FishingPage({ state, busy, now, clockOffset, onOpenDrawer, onOpenDepths, onOpenMerchant, onToggle, onGuideSeen, onGuideSkip, onAction }) {
+function FishingPage({ state, busy, now, clockOffset, fishingFeedback, onOpenDrawer, onOpenDepths, onOpenMerchant, onToggle, onGuideSeen, onGuideSkip, onAction }) {
   const rod = state.rod
   const bite = state.fishing.bite
   const rate = Math.round(Number.isFinite(Number(rod.energyPerSecond)) ? Math.max(1, Number(rod.energyPerSecond)) : BASE_ENERGY_PER_SECOND)
@@ -692,10 +702,16 @@ function FishingPage({ state, busy, now, clockOffset, onOpenDrawer, onOpenDepths
   const tourFocusAt = Number(guideState.focus?.tension?.at)
   const merchantAvailable = guideTabVisible(state, 'npc')
   const reelDisabled = busy || broken || (warehouseIsFull && !state.fishing.running)
+  const nextDepth = DEPTHS.find(({ id }) => !availableDepth.some((depth) => depth.id === id))
+  const voyageSteps = useMemo(() => firstVoyageSteps({ stats: state.stats, rods: state.rods }), [state.stats, state.rods])
+  const firstVoyageVisible = showFirstVoyage(voyageSteps, nextDepth, showGuide)
+  const hasVoyagePanels = firstVoyageVisible || Boolean(nextDepth)
+  const hasGuideRow = hasVoyagePanels || tourOpen || rodGuideOpen
   return <>
-    <div className={cn('voyage-deck', (tourOpen || rodGuideOpen) && 'voyage-deck-guided')}>
+    <div className={cn('voyage-deck', hasGuideRow && 'voyage-deck-guided')}>
       <header className="voyage-scene">
         <img src={depthArt(selectedDepth.id)} alt="" fetchPriority="high" decoding="async" />
+        <FishingFeedback event={fishingFeedback} reeling={reeling} tensionLevel={tensionLevel} />
         <div className="voyage-scene-copy">
           <span className="voyage-sea-risk"><Waves size={16} aria-hidden="true" />{selectedDepth.riskLabel}</span>
           <h1>钓鱼</h1>
@@ -729,8 +745,12 @@ function FishingPage({ state, busy, now, clockOffset, onOpenDrawer, onOpenDepths
           </button>
         </div>
       </section>
-      {(tourOpen || rodGuideOpen) && <div className="voyage-guide">
-        {tourOpen ? <GuideDeck
+      {hasGuideRow && <div className="voyage-guide first-voyage-stack">
+        {hasVoyagePanels && <div className="first-voyage-panels">
+          {firstVoyageVisible && <FirstVoyageContract steps={voyageSteps} running={state.fishing.running} merchantAvailable={merchantAvailable} canStart={!reelDisabled} onToggle={onToggle} onOpenMerchant={onOpenMerchant} onOpenDrawer={onOpenDrawer} />}
+          {nextDepth && <NextVoyage state={state} depth={nextDepth} busy={busy} canStart={!reelDisabled} onToggle={onToggle} onAction={onAction} />}
+        </div>}
+        {tourOpen && <GuideDeck
           title="钓鱼页导览"
           pages={FISHING_TOUR.map((page) => page.anchor === 'tension' ? { ...page, text: guideStepCopy(guideConfig, tourStep) || page.text } : page)}
           stepId="tension"
@@ -740,7 +760,8 @@ function FishingPage({ state, busy, now, clockOffset, onOpenDrawer, onOpenDepths
           onSeen={onGuideSeen}
           onSkip={onGuideSkip}
           icon={<Sparkles size={16} />}
-        /> : <GuideCard
+        />}
+        {!tourOpen && rodGuideOpen && <GuideCard
           title="钓竿与材料"
           body={guideStepCopy(state?.config?.guide, 'rodGuide')}
           stepId="rodGuide"

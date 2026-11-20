@@ -3059,6 +3059,7 @@ export function createInitialState(worldConfig = null, random = Math.random) {
     unlockedDepths: [...STARTING_DEPTHS],
     config,
     fishing: { running: true, phase: 'charging', progress: 6200, tension: 0, bite: null, lastTickAt: Date.now(), lastCatch: null, lastOutcome: null, sessionCount: 0, selectedDepthId: 'shore', recoverUntil: 0, recoverFrom: 0, lowDurability: false, autoRepairAt: 0, autoStopped: false },
+    fishingReturn: null,
     rod: { ...config.rods[0], id: `rod-${config.rods[0].id}`, levels: {}, status: 'active' },
     rods: [{ ...config.rods[0], id: `rod-${config.rods[0].id}`, levels: {}, status: 'active' }],
     inventory: { '浮木纤维': 18, '潮汐树脂': 11, '深蓝晶片': 6, '渊核碎片': 2, '旧日合金': 0 },
@@ -3159,6 +3160,19 @@ function stripLegacyTalents(state) {
   return rest
 }
 
+function normalizeFishingReturn(report) {
+  if (!Number.isSafeInteger(report?.at) || report.at <= 0 || !Number.isSafeInteger(report.elapsedMs) || report.elapsedMs <= 0) return null
+  const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : 0
+  return {
+    at: report.at,
+    elapsedMs: report.elapsedMs,
+    cappedMs: typeof report.cappedMs === 'number' && Number.isFinite(report.cappedMs) ? clamp(report.cappedMs, 0, report.elapsedMs) : null,
+    landed: count(report.landed),
+    escaped: count(report.escaped),
+    stopReason: ['broken', 'durability', 'warehouse'].includes(report.stopReason) ? report.stopReason : null,
+  }
+}
+
 function migrateState(parsed, worldConfig = null) {
   const fresh = createInitialState(worldConfig)
   const version = Number(parsed?.version || 1)
@@ -3228,6 +3242,7 @@ function migrateState(parsed, worldConfig = null) {
     guide,
     daily: normalizeDailyContracts(parsed?.daily),
     depthSurveys: Object.fromEntries(DEPTH_SURVEYS.filter(({ toId }) => parsed?.depthSurveys?.[toId] === true).map(({ toId }) => [toId, true])),
+    fishingReturn: normalizeFishingReturn(parsed?.fishingReturn),
     warehouseLevel,
     rod: activeRod,
     rods: rods.map((rod) => rod.id === activeRod.id ? { ...rod, ...activeRod, status: activeRod.status } : rod),

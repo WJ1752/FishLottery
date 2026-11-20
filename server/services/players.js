@@ -1,5 +1,5 @@
 import { get, run, transaction } from '../db/index.js'
-import { advanceDepthSurveys, advanceFishing, advanceGuide, syncGuideFocus, applyConfig, applyDrawNumbers, autoRepairRod, createInitialState, extractPlayerState, fxDayClose, fxDayIndex, getBatchId, hydrateState, mergeFxWorld, redactScratchFaces, refreshBlackMarketDay, refreshDailyContracts, settleFxDays, settleMachines } from '../../src/game.js'
+import { MIN_DURABILITY, advanceDepthSurveys, advanceFishing, advanceGuide, syncGuideFocus, applyConfig, applyDrawNumbers, autoRepairRod, createInitialState, extractPlayerState, fxDayClose, fxDayIndex, getBatchId, hydrateState, mergeFxWorld, redactScratchFaces, refreshBlackMarketDay, refreshDailyContracts, settleFxDays, settleMachines, warehouseFull } from '../../src/game.js'
 import { cryptoRandom } from '../lib/rng.js'
 import { now } from '../lib/clock.js'
 import { appendFlowInTransaction, diffFlows, readToday, readWorld, settleWorld } from './market.js'
@@ -9,7 +9,8 @@ import { batchIdAt, batchNumbers, batchRules } from './lottery.js'
 // 同一玩家的请求在进程内串行化：单实例部署下这就够了，不需要数据库行锁。
 
 const locks = new Map()
-
+const DEFAULT_OFFLINE_CAP_MS = 12 * 60 * 60 * 1000
+const FISHING_RETURN_MIN_MS = 60 * 1000
 
 export function withPlayerLock(userId, fn) {
   const key = String(userId)
@@ -64,17 +65,17 @@ export function savePlayer(db, userId, state, version) {
 // 为什么要分段：FX 的日线按自然日结算，如果一口气把 12 小时算完，
 // 跨过零点的那部分流水会被算到错误的交易日上。所以按天切开，逐段推进，
 // 每段结束就把该段产生的流水合并进全服待结算桶。
-export function catchUp(db, state, config, capMs = 12 * 60 * 60 * 1000, at = now()) {
+export function catchUp(db, state, config, capMs = DEFAULT_OFFLINE_CAP_MS, at = now()) {
   const last = Number(state.fishing?.lastTickAt)
   if (!Number.isFinite(last) || at <= last) return { state, flows: [], changed: false }
 
   const limit = Number(capMs)
-  const target = Math.min(at, last + Math.max(0, Number.isFinite(limit) ? limit : 12 * 60 * 60 * 1000))
+  const target = Math.min(at, last + Math.max(0, Number.isFinite(limit) ? limit : DEFAULT_OFFLINE_CAP_MS))
   // 停钓不等于停机：耐久跌破停钓线后 auto-stop 会把 running 置 false，
   // 但自动维修天赋仍可能把竿补回来。先试一次，修好了就照常追算；
   // 修不起来（冷却 / 材料不足 / 没点天赋）才按停机跳过这段时间。
   let activeState = state
-  if (!activeState.fishing?.running || activeState.rod?.status === 'broken' || (Number(activeState.rod?.durability) || 0) <= 1) {
+  if (!activeState.fishing?.running || activeState.rod?.status === 'broken' || (Number(activeState.rod?.durability) || 0) <= MIN_DURABILITY) {
     // 修了就算数（材料已经花掉），即使这次还没修过停钓线也把结果留下，
     // 下次同步够冷却后继续修，而不是把这次维修悄悄丢掉。
     const repaired = autoRepairRod(activeState, at)
@@ -82,7 +83,7 @@ export function catchUp(db, state, config, capMs = 12 * 60 * 60 * 1000, at = now
   }
   // 完全停机（没在钓鱼 / 竿已损坏 / 耐久见底）时不需要逐段重放，直接把时钟推到现在：
   // 停钓期间本来就不产出，重放一遍只是白烧 CPU，而且每次同步都会重复算同一个区间。
-  const idle = !activeState.fishing?.running || activeState.rod?.status === 'broken' || (Number(activeState.rod?.durability) || 0) <= 1
+  const idle = !activeState.fishing?.running || activeState.rod?.status === 'broken' || (Number(activeState.rod?.durability) || 0) <= MIN_DURABILITY
   if (idle) {
     return { state: { ...activeState, fishing: { ...activeState.fishing, lastTickAt: at } }, flows: [], changed: activeState !== state }
   }
@@ -123,7 +124,20 @@ export function catchUp(db, state, config, capMs = 12 * 60 * 60 * 1000, at = now
       recoverUntil: fishing.recoverUntil ? fishing.recoverUntil + shift : 0,
     } }
   }
-  return { state: current, flows, changed }
+  return { state: current, flows, changed, cappedMs: target < at ? target - last : null }
+}
+
+function fishingReturn(before, after, at, cappedMs) {
+  const elapsedMs = at - before.fishing.lastTickAt
+  if (!(elapsedMs >= FISHING_RETURN_MIN_MS)) return null
+  const landed = Math.max(0, after.stats.totalCatches - before.stats.totalCatches)
+  const escaped = Math.max(0, after.stats.totalEscapes - before.stats.totalEscapes)
+  let stopReason = null
+  if (after.rod.status === 'broken') stopReason = 'broken'
+  else if (after.rod.durability <= MIN_DURABILITY || (!after.fishing.running && after.fishing.autoStopped)) stopReason = 'durability'
+  else if (!after.fishing.running && warehouseFull(after)) stopReason = 'warehouse'
+  if (!before.fishing.running && !landed && !escaped && !stopReason) return null
+  return { at, elapsedMs, cappedMs: cappedMs ?? null, landed, escaped, stopReason }
 }
 
 // 「经济状态」签名：金币、背包、鱼、票、刮刮乐、钓竿、统计、天赋。
@@ -144,6 +158,7 @@ function economySignature(state) {
     state.stats,
     state.daily,
     state.depthSurveys,
+    state.fishingReturn?.at,
     state.settings,
     // 逐个解锁：层级变化要推一次完整 me，导航才会出现新页签。
     state.guide?.stage,
@@ -193,7 +208,9 @@ function reconcilePlayer(db, userId, config, world, { configVersion, capMs, forc
   if (configChanged) state = { ...applyConfig(state, config), configVersion: Number(configVersion) }
 
   const caught = catchUp(db, state, config, capMs, at)
-  state = caught.state
+  const returned = fishingReturn(state, caught.state, at, caught.cappedMs)
+  // 保留最近一次报告，避免浏览器重试或另一设备先同步时吞掉离线回执。
+  state = returned ? { ...caught.state, fishingReturn: returned } : caught.state
   if (caught.flows.length) appendFlowInTransaction(db, caught.flows, config, at)
   const today = caught.flows.length ? readToday(db) : world.today
   state = mergeFxWorld(state, { ...world, today })

@@ -357,6 +357,15 @@ test('offline time is replayed but capped at the configured limit', async () => 
     assert.equal(sync.status, 200)
     assert.ok(sync.body.changed)
     assert.ok(sync.body.me.stats.totalCatches > 0, '离线两小时应有产出')
+    const report = sync.body.me.fishingReturn
+    assert.equal(report.at, t0 + 2 * HOUR)
+    assert.equal(report.elapsedMs, sync.body.fishing.lastTickAt - boot.body.me.fishing.lastTickAt)
+    assert.equal(report.landed, sync.body.me.stats.totalCatches - boot.body.me.stats.totalCatches)
+    assert.equal(report.escaped, sync.body.me.stats.totalEscapes - boot.body.me.stats.totalEscapes)
+    assert.equal(report.cappedMs, null)
+
+    const recoveredReport = await app.call('/api/bootstrap', { cookie })
+    assert.deepEqual(recoveredReport.body.me.fishingReturn, report, '重新连接仍能读取同一份离线回执')
 
     // 再推进 100 小时：只能结算到 cap（测试里 capMs 默认 12h），额外部份直接跳过。
     const caughtBefore = sync.body.me.stats.totalCatches
