@@ -1,0 +1,31 @@
+{
+  "name": "deepwater-lottery",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "node server/index.js",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "cert": "node scripts/gen-cert.js",
+    "admin": "node scripts/admin.js",
+    "db:backup": "node scripts/backup-db.js",
+    "db:rebuild": "node scripts/rebuild-db.js",
+    "mail:test": "node scripts/mail-check.js",
+    "mail:selftest": "node scripts/smtp-selftest.js",
+    "test": "node --test --test-force-exit",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=23.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest"
+  }
+}
