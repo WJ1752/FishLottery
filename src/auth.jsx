@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Anchor, Check } from 'lucide-react'
+import { Anchor, ArrowRight, Check, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from './api'
 import { harborArt } from './art'
+import './auth-ui.css'
 
 function useSubmit() {
   const [busy, setBusy] = useState(false)
@@ -24,23 +25,29 @@ function useSubmit() {
   return { busy, error, setError, run }
 }
 
-function AuthShell({ title, children, footer, service = null }) {
-  return <main className="auth-shell auth-entry">
-    <div className="auth-landscape">
-      <img src={harborArt} alt="" decoding="async" fetchPriority="high" />
-      <div className="auth-landscape-copy">
-        <div className="brand-mark"><Anchor size={25} strokeWidth={1.8} /></div>
+function AuthShell({ title, description, children, footer, service = null, embedded = false }) {
+  const card = <section className="auth-portal-card" aria-label={title}>
+    {embedded && <span className="auth-portal-shield" aria-hidden="true"><ShieldCheck size={24} /></span>}
+    <div className="auth-portal-heading">
+      <h1>{title}</h1>
+      {description && <p>{description}</p>}
+    </div>
+    {service?.message && <div className={`service-bulletin ${service.mode === 'maintenance' ? 'service-paused' : ''}`} role="status"><strong>{service.mode === 'maintenance' ? '维护中' : '港口公告'}</strong><span>{service.message}</span></div>}
+    {children}
+    {footer && <div className="auth-footer">{footer}</div>}
+  </section>
+
+  if (embedded) return <div className="auth-portal-gate">{card}</div>
+
+  return <main className="auth-portal">
+    <img className="auth-portal-art" src={harborArt} alt="" decoding="async" fetchPriority="high" />
+    <div className="auth-portal-layout">
+      <div className="auth-portal-brand">
+        <span className="auth-portal-mark" aria-hidden="true"><Anchor size={23} strokeWidth={1.6} /></span>
         <strong>深海鱼市</strong>
         <p>出海垂钓，带着鱼获回到潮汐商会。</p>
       </div>
-    </div>
-    <div className="auth-entry-form">
-      <section className="auth-card panel">
-        <h1>{title}</h1>
-        {service?.message && <div className={`service-bulletin ${service.mode === 'maintenance' ? 'service-paused' : ''}`} role="status"><strong>{service.mode === 'maintenance' ? '维护中' : '港口公告'}</strong><span>{service.message}</span></div>}
-        {children}
-        {footer && <div className="auth-footer">{footer}</div>}
-      </section>
+      {card}
     </div>
   </main>
 }
@@ -77,13 +84,14 @@ export function LoginPage({ notice, service, onAuthenticated, onSwitchToRegister
     return <AuthShell
       service={service}
       title="两步验证"
+      description="输入验证器中的验证码，或使用一条备用恢复码。"
       footer={<button className="text-button" disabled={busy} onClick={() => { setChallenge(null); setError('') }}>返回登录</button>}
     >
       <form className="auth-form" onSubmit={submitTotp}>
         <label className="admin-field">
-          <span>验证码</span>
+          <span>验证码或恢复码</span>
           <input className="admin-input auth-code-input" value={code} onChange={(event) => setCode(event.target.value)}
-            autoComplete="one-time-code" inputMode="numeric" autoFocus placeholder="123456 或 ABCD-EFGH" />
+            autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} autoFocus />
         </label>
         {error && <p className="auth-error" role="alert">{error}</p>}
         <button className="primary-button wide" disabled={busy || !code.trim()}>{busy ? '验证中…' : '验证并进入'}</button>
@@ -94,6 +102,7 @@ export function LoginPage({ notice, service, onAuthenticated, onSwitchToRegister
   return <AuthShell
     service={service}
     title="登录"
+    description="登录后继续你的航程。"
     footer={<>还没有账号？<button className="text-button" disabled={busy} onClick={onSwitchToRegister}>注册</button></>}
   >
     <form className="auth-form" onSubmit={submit}>
@@ -107,7 +116,7 @@ export function LoginPage({ notice, service, onAuthenticated, onSwitchToRegister
         <input className="admin-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
       </label>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <button className="primary-button wide" disabled={busy || !username || !password}>{busy ? '登录中…' : '登录'}</button>
+      <button className="primary-button wide" disabled={busy || !username || !password}>{busy ? '登录中…' : '登录'}<ArrowRight size={17} aria-hidden="true" /></button>
     </form>
   </AuthShell>
 }
@@ -133,6 +142,7 @@ export function RegisterPage({ service, onAuthenticated, onSwitchToLogin }) {
   return <AuthShell
     service={service}
     title="注册"
+    description="创建账号后，鱼获和航海进度会随账号保存。"
     footer={<>已有账号？<button className="text-button" disabled={busy} onClick={onSwitchToLogin}>登录</button></>}
   >
     <form className="auth-form" onSubmit={submit}>
@@ -151,7 +161,7 @@ export function RegisterPage({ service, onAuthenticated, onSwitchToLogin }) {
         <input className="admin-input" type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" required />
       </label>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <button className="primary-button wide" disabled={busy || !username || !password || !confirm}>{busy ? '创建中…' : '创建账号'}</button>
+      <button className="primary-button wide" disabled={busy || !username || !password || !confirm}>{busy ? '创建中…' : '创建账号'}<ArrowRight size={17} aria-hidden="true" /></button>
     </form>
   </AuthShell>
 }
@@ -180,13 +190,13 @@ export function TotpSetupPage({ onDone }) {
   }
 
   if (codes) {
-    return <AuthShell title="已启用两步验证">
+    return <AuthShell title="已启用两步验证" description="请妥善保存这些一次性恢复码，无法使用验证器时可以用它们登录。" embedded>
       <div className="auth-codes">{codes.map((item) => <code key={item}>{item}</code>)}</div>
       <button className="primary-button wide" onClick={onDone}><Check size={15} /> 继续</button>
     </AuthShell>
   }
 
-  return <AuthShell title="绑定两步验证">
+  return <AuthShell title="绑定两步验证" description="在验证器中手动添加密钥，然后输入生成的 6 位验证码。" embedded>
     {!secret && <p className="auth-subtitle">正在生成…</p>}
     {secret?.error && <p className="auth-error" role="alert">{secret.error}</p>}
     {secret && !secret.error && <>
@@ -218,13 +228,13 @@ export function StepUpPage({ onDone, onCancel }) {
       onDone()
     })
   }
-  return <AuthShell title="确认身份"
+  return <AuthShell title="确认身份" description="输入验证器中的验证码或一条备用恢复码，以进入管理后台。" embedded
     footer={onCancel ? <button className="text-button" onClick={onCancel}>返回游戏</button> : null}>
     <form className="auth-form" onSubmit={submit}>
       <label className="admin-field">
-        <span>验证码</span>
+        <span>验证码或恢复码</span>
         <input className="admin-input auth-code-input" value={code} onChange={(event) => setCode(event.target.value)}
-          inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" />
+          autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} autoFocus />
       </label>
       {error && <p className="auth-error" role="alert">{error}</p>}
       <button className="primary-button wide" disabled={busy || code.trim().length < 6}>{busy ? '验证中…' : '进入管理后台'}</button>

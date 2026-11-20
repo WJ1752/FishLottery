@@ -25,6 +25,29 @@ const SECTIONS = [
   { id: 'guide', label: '新手引导', icon: Flag },
 ]
 
+const ADMIN_NAV_GROUPS = [
+  { label: '管理', items: [
+    { id: 'operations', label: '运营', icon: Activity },
+    { id: 'users', label: '账号', icon: Users },
+  ] },
+  { label: '游戏配置', items: SECTIONS.filter(({ id }) => ['rod', 'trait', 'depth', 'machine', 'guide'].includes(id)) },
+  { label: '市场与奖励', items: SECTIONS.filter(({ id }) => ['merchant', 'fx', 'black', 'scratch', 'lottery'].includes(id)) },
+]
+
+function AdminNavigation({ section, onSelect }) {
+  return <nav className="ops-navigation" aria-label="运营模块">
+    {ADMIN_NAV_GROUPS.map(({ label, items }) => <div className="ops-nav-group" key={label}>
+      <h2>{label}</h2>
+      <div className="ops-nav-items">
+        {items.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" className="ops-nav-button" aria-pressed={section === id} onClick={() => onSelect(id)}>
+          <Icon size={17} aria-hidden="true" />
+          <span>{name}</span>
+        </button>)}
+      </div>
+    </div>)}
+  </nav>
+}
+
 const TENSION_FIELDS = [
   { key: 'maxTension', label: '最大张力', hint: '默认 1000', min: 50, step: 10 },
   { key: 'accelMs', label: '加速时间 (ms)', hint: '从 0 加速到满速', min: 100, step: 100 },
@@ -1372,38 +1395,41 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
   const maintenance = overview.service?.mode === 'maintenance'
   const showingEditor = SECTIONS.some((item) => item.id === section)
   return <div className="ops-console">
-    <div className="page-header ops-heading" style={{ '--ops-harbor': `url("${harborArt}")` }}><div>
-      <h1>运营控制台</h1>
-      <p><ShieldCheck size={15} aria-hidden="true" /> {overview.me.username} · 管理员会话</p>
-    </div><button className="secondary-button" onClick={loadOverview}><RotateCcw size={14} /> 刷新</button></div>
-    <nav className="admin-tabs ops-tabs" aria-label="运营控制台">
-      <button aria-pressed={section === 'operations'} className={cn('admin-tab', section === 'operations' && 'admin-tab-active')} onClick={() => setSection('operations')}><Activity size={16} /> 运营</button>
-      <button aria-pressed={section === 'users'} className={cn('admin-tab', section === 'users' && 'admin-tab-active')} onClick={() => setSection('users')}><Users size={16} /> 账号</button>
-      {SECTIONS.map(({ id, label, icon: Icon }) => <button key={id} aria-pressed={section === id} className={cn('admin-tab', section === id && 'admin-tab-active')} onClick={() => setSection(id)}><Icon size={16} /> {label}</button>)}
-    </nav>
-    {(showingEditor || dirty) && <div className={cn('admin-savebar', dirty && 'is-dirty')}>
-      <span className="admin-savebar-state">{dirty ? '未发布的配置' : `配置 v${overview.configVersion}`}</span>
-      <div className="admin-savebar-actions">
-        <button className="secondary-button" disabled={!dirty || saving} onClick={discard}><RotateCcw size={14} /> {conflict ? '载入最新配置' : '撤销'}</button>
-        <button className="primary-button" disabled={!dirty || saving || conflict} onClick={save}><Save size={14} /> {saving ? '发布中…' : '发布配置'}</button>
+    <header className="ops-heading" style={{ '--ops-harbor': `url("${harborArt}")` }}>
+      <div>
+        <h1>运营控制台</h1>
+        <p><ShieldCheck size={16} aria-hidden="true" /> {overview.me.username} · 管理员会话</p>
       </div>
-    </div>}
-    {conflict && !error && <p className="auth-error" role="status">全服配置已有更新。载入后可继续编辑。</p>}
-    {(error || loadError || notice) && <p className={error || loadError ? 'auth-error' : 'auth-notice'} role="status">{error || loadError || notice}</p>}
-    <fieldset disabled={saving} style={{ display: 'contents' }}>
-      {section === 'operations' && <OperationsAdmin overview={overview} dirty={dirty} onConfig={acceptConfig} onRefresh={loadOverview} onGateError={handleGateError} />}
-      {section === 'scratch' && <ScratchAdmin config={draft} patch={patch} />}
-      {section === 'lottery' && <LotteryAdmin config={draft} patch={patch} />}
-      {section === 'rod' && <RodAdmin config={draft} patch={patch} />}
-      {section === 'trait' && <TraitAdmin config={draft} patch={patch} />}
-      {section === 'depth' && <DepthAdmin config={draft} patch={patch} />}
-      {section === 'merchant' && <MerchantAdmin config={draft} patch={patch} />}
-      {section === 'fx' && <FxAdmin config={draft} patch={patch} onRefresh={loadOverview} onGateError={handleGateError} maintenance={maintenance} />}
-      {section === 'black' && <BlackMarketAdmin config={draft} patch={patch} />}
-      {section === 'machine' && <MachineAdmin config={draft} patch={patch} />}
-      {section === 'guide' && <GuideAdmin config={draft} patch={patch} />}
-      {section === 'users' && <UsersAdmin overview={overview} me={overview.me} onRefresh={loadOverview} onGateError={handleGateError} />}
-    </fieldset>
+      <button className="secondary-button" onClick={loadOverview}><RotateCcw size={16} aria-hidden="true" /> 刷新</button>
+    </header>
+    <div className="ops-workspace">
+      <AdminNavigation section={section} onSelect={setSection} />
+      <div className="ops-content">
+        {(showingEditor || dirty) && <div className={cn('admin-savebar', dirty && 'is-dirty')}>
+          <span className="admin-savebar-state">{dirty ? '未发布的配置' : `配置 v${overview.configVersion}`}</span>
+          <div className="admin-savebar-actions">
+            <button className="secondary-button" disabled={!dirty || saving} onClick={discard}><RotateCcw size={14} /> {conflict ? '载入最新配置' : '撤销'}</button>
+            <button className="primary-button" disabled={!dirty || saving || conflict} onClick={save}><Save size={14} /> {saving ? '发布中…' : '发布配置'}</button>
+          </div>
+        </div>}
+        {conflict && !error && <p className="auth-error" role="status">全服配置已有更新。载入后可继续编辑。</p>}
+        {(error || loadError || notice) && <p className={error || loadError ? 'auth-error' : 'auth-notice'} role="status">{error || loadError || notice}</p>}
+        <fieldset disabled={saving} style={{ display: 'contents' }}>
+          {section === 'operations' && <OperationsAdmin overview={overview} dirty={dirty} onConfig={acceptConfig} onRefresh={loadOverview} onGateError={handleGateError} />}
+          {section === 'scratch' && <ScratchAdmin config={draft} patch={patch} />}
+          {section === 'lottery' && <LotteryAdmin config={draft} patch={patch} />}
+          {section === 'rod' && <RodAdmin config={draft} patch={patch} />}
+          {section === 'trait' && <TraitAdmin config={draft} patch={patch} />}
+          {section === 'depth' && <DepthAdmin config={draft} patch={patch} />}
+          {section === 'merchant' && <MerchantAdmin config={draft} patch={patch} />}
+          {section === 'fx' && <FxAdmin config={draft} patch={patch} onRefresh={loadOverview} onGateError={handleGateError} maintenance={maintenance} />}
+          {section === 'black' && <BlackMarketAdmin config={draft} patch={patch} />}
+          {section === 'machine' && <MachineAdmin config={draft} patch={patch} />}
+          {section === 'guide' && <GuideAdmin config={draft} patch={patch} />}
+          {section === 'users' && <UsersAdmin overview={overview} me={overview.me} onRefresh={loadOverview} onGateError={handleGateError} />}
+        </fieldset>
+      </div>
+    </div>
   </div>
 }
 
@@ -1466,10 +1492,10 @@ function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) 
 
   return <>
     <section className="ops-metrics" aria-label="服务概况">
-      <div className="panel ops-metric"><span>开放状态</span><strong>{service.mode === 'maintenance' ? '维护中' : '开放'}</strong><small>{service.updatedAt ? serviceTime(service.updatedAt) : '默认开放'}</small></div>
-      <div className="panel ops-metric"><span>玩家账号</span><strong>{overview.stats.players.toLocaleString('zh-CN')}</strong><small>{overview.stats.sessions.toLocaleString('zh-CN')} 个有效会话</small></div>
-      <div className="panel ops-metric"><span>近 5 分钟 API 请求</span><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></div>
-      <div className="panel ops-metric"><span>开奖与行情结算</span><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></div>
+      <div className="panel ops-metric ops-metric-service" data-state={service.mode}><span><Activity size={15} aria-hidden="true" /> 开放状态</span><strong>{service.mode === 'maintenance' ? '维护中' : '开放'}</strong><small>{service.updatedAt ? serviceTime(service.updatedAt) : '默认开放'}</small></div>
+      <div className="panel ops-metric"><span><Users size={15} aria-hidden="true" /> 玩家账号</span><strong>{overview.stats.players.toLocaleString('zh-CN')}</strong><small>{overview.stats.sessions.toLocaleString('zh-CN')} 个有效会话</small></div>
+      <div className="panel ops-metric"><span><BarChart3 size={15} aria-hidden="true" /> 近 5 分钟 API 请求</span><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></div>
+      <div className="panel ops-metric"><span><TrendingUp size={15} aria-hidden="true" /> 开奖与行情结算</span><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></div>
     </section>
 
     <div className="ops-control-grid">
