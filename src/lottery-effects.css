@@ -1,0 +1,128 @@
+.lottery-print-action {
+  position: relative;
+}
+
+.lottery-print-slip {
+  position: absolute;
+  inset-inline-end: 12px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  color: var(--accent);
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  animation: lottery-print-slip 820ms both;
+}
+
+.lottery-print-slip .item-illustration {
+  width: 28px;
+  height: 23px;
+}
+
+.lottery-print-slip > span:last-child {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  background: var(--success-soft);
+  animation: lottery-print-seal 240ms 150ms both;
+}
+
+@keyframes lottery-print-slip {
+  0% { opacity: 0; transform: translateY(5px) scale(.92); clip-path: inset(22% 0 0); }
+  30%, 74% { opacity: 1; transform: none; clip-path: inset(0); }
+  100% { opacity: 0; transform: translateY(-4px); clip-path: inset(0); }
+}
+
+@keyframes lottery-print-seal {
+  from { opacity: 0; transform: scale(1.17); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.draw-board > .secondary-button.lottery-replay-button {
+  margin-top: 0;
+}
+
+.lottery-replay-dialog {
+  width: min(440px, calc(100vw - 28px));
+}
+
+.lottery-replay-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: .87rem;
+  font-weight: 600;
+}
+
+.lottery-replay-meta .item-illustration {
+  width: 30px;
+  height: 28px;
+}
+
+.lottery-replay-numbers {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(5px, 1.6vw, 10px);
+  margin: 16px 0 18px;
+  padding: 14px 10px;
+  border-block: 1px dashed var(--accent-line);
+  background: linear-gradient(180deg, var(--surface), var(--success-soft));
+  list-style: none;
+}
+
+.lottery-replay-numbers li {
+  display: grid;
+  place-items: center;
+  width: clamp(31px, 9vw, 40px);
+  aspect-ratio: 1;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: inset 0 -3px 0 var(--success-soft);
+  font: 600 .9rem 'DM Mono', monospace;
+  animation: lottery-reveal-number 330ms var(--lottery-reveal-delay) cubic-bezier(.2, .72, .3, 1) both;
+}
+
+@keyframes lottery-reveal-number {
+  from { opacity: 0; transform: translateY(-7px) scale(.9); }
+  to { opacity: 1; transform: none; }
+}
+
+.lottery-report-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.reward-report-dialog:has(.lottery-report-summary) .report-list {
+  animation: lottery-report-arrive 330ms cubic-bezier(.2, .72, .3, 1) both;
+}
+
+@keyframes lottery-report-arrive {
+  from { opacity: .4; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lottery-print-slip {
+    display: none;
+  }
+
+  .lottery-replay-numbers li,
+  .reward-report-dialog:has(.lottery-report-summary) .report-list {
+    animation: none;
+  }
+}

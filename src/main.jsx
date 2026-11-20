@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FISHING_TOUR, GuideCard, GuideDeck, GuideNewBadge, pendingGuideCard, STEP_LABELS } from './guide.jsx'
 import { createRoot } from 'react-dom/client'
-import { Anchor, ArrowLeft, ArrowRight, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coins, Compass, Fish, Gift, Hammer, HandCoins, LogOut, Menu, Moon, Package, Pause, Play, Scale, Settings2, ShieldCheck, Skull, SlidersHorizontal, Sparkles, Store, Sun, Ticket, TimerReset, TrendingUp, Unlock, Waves, X } from 'lucide-react'
+import { Anchor, ArrowLeft, ArrowRight, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Coins, Compass, Fish, Gift, Hammer, HandCoins, LogOut, Menu, Moon, Package, Pause, Play, Scale, Settings2, ShieldCheck, Skull, SlidersHorizontal, Sparkles, Store, Sun, Ticket, TimerReset, TrendingUp, Unlock, Volume2, VolumeX, Waves, X } from 'lucide-react'
 import { BASE_ENERGY_PER_SECOND, COIN, DAILY_CONTRACTS, DEFAULT_THEME, DEPTHS, THEMES, SCRATCH_DEFAULT_SLOTS, SCRATCH_MIN_SLOTS, RECOVERY_MS, autoRepairRestore, autoRepairThreshold, autoStopThreshold, biteProgress, guideTabVisible, normalizeGuideConfig, canEmergencyRepairRod, canRepairRod, durabilityTensionFactor, guideStepCopy, hitDistribution, rewardFor, blackDailyQuota, blackFishEligible, blackFishValue, blackMarketUnlocked, blackOwnsTheme, canUnlockDepth, depthSurvey, depthUnlockCost, depthsFor, fishMatchesExchangeFilter, fxConfig, fxPosition, nextDrawAt, normalizeSettings, scratchGridLayout, scratchPairedSlots, scratchRadius, scratchThreshold, ticketCostFor, upgradeCostAt, warehouseCapacity, warehouseCount, warehouseUpgradeCost, canUpgradeWarehouse, ENERGY_PER_CATCH, MATERIALS, MIN_DURABILITY, TRAITS, formatCountdown, lotteryTypeFor, quoteForFish, quoteLabel, rodConfigFor, scratchTypeFor, sortNumberedTickets, machineDefFor, machineUnlocked, machineStatus, machineShiftHours, machineFeePerItem, machineDepositMax, machineModuleStats, machineModules, machineModulesUnlocked, workshopLocation } from './game'
 import { tensionAt } from './traits'
 import { api, setUnauthorizedHandler } from './api'
@@ -9,10 +9,13 @@ import { LoginPage, RegisterPage, StepUpPage, TotpSetupPage } from './auth'
 import { FxCandles, clampNum, decodeCandleRows, fmtPct, fmtPrice, fxGrainLabel } from './fx-chart'
 import { depthArt, fishArt, itemArt, locationArt } from './art'
 import FishCodex from './fish-codex.jsx'
+import { getGameSoundEnabled, playGameCue, primeGameAudio, setGameSoundEnabled } from './game-audio.js'
 
 // 没有蜡烛时返回同一个空数组：稳定引用，避免下游 effect 因引用变化反复触发。
 const EMPTY_CANDLES = []
 import './styles.css'
+import './lottery-effects.css'
+import './market-effects.css'
 
 const AdminPage = lazy(() => import('./admin'))
 
@@ -111,6 +114,7 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
   const [busy, setBusy] = useState(false)
   const [disconnected, setDisconnected] = useState(false)
   const [service, setService] = useState(initialService)
+  const [soundEnabled, setSoundEnabled] = useState(getGameSoundEnabled)
   // 记住进黑市前停在哪个鱼市页面，品牌锁返回时恢复。
   const lastFishTabRef = useRef('fishing')
   const actionPending = useRef(false)
@@ -118,6 +122,16 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
 
   const cursor = useRef({ meVersion: 0, daysVersion: 0, serverTime: 0 })
   const configVersionRef = useRef(0)
+
+  const toggleSound = () => {
+    const enabled = !soundEnabled
+    setGameSoundEnabled(enabled)
+    setSoundEnabled(enabled)
+    if (enabled) {
+      primeGameAudio()
+      playGameCue('sound-preview')
+    }
+  }
 
   useEffect(() => {
     // 每次进入游戏注册独立监听，已退出的请求不能影响下一个会话。
@@ -376,6 +390,7 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
             ? <div className="coin-chip coin-chip-black" title="渔币余额"><ItemIllustration item="渔币" fallback={<Coins size={15} />} /><b>{(me.blackMarket?.coins || 0).toLocaleString('zh-CN')}</b><span className="coin-unit">渔币</span></div>
             : <div className="coin-chip" title="鱼币余额"><ItemIllustration item="鱼币" fallback={<Coins size={15} />} /><b>{(me.coins || 0).toLocaleString('zh-CN')}</b><span className="coin-unit">鱼币</span></div>}
           <div className="server-chip" title="服务器时间"><span className="live-dot" /> <b>{new Date(now).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</b></div>
+          <GameSoundToggle enabled={soundEnabled} onToggle={toggleSound} compact />
         </div>
       </header>
       <div className="page-wrap">
@@ -408,7 +423,7 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
         {activeTab === 'admin' && isAdmin && <Suspense fallback={<p className="panel admin-loading" role="status">正在加载管理后台…</p>}>
           <AdminPage user={user} onUserChange={onUserChange} config={config} configVersion={configVersion} onConfigSaved={applySavedConfig} onSignOut={onSignOut} />
         </Suspense>}
-        {activeTab === 'settings' && <SettingsPage state={state} user={user} onAction={send} onSetTheme={setTheme} onUserChange={onUserChange} onProgressReset={applyProgressReset} />}
+        {activeTab === 'settings' && <SettingsPage state={state} user={user} onSetTheme={setTheme} onUserChange={onUserChange} onProgressReset={applyProgressReset} soundEnabled={soundEnabled} onToggleSound={toggleSound} />}
       </div>
     </main>
     {drawer && <DurabilityDrawer state={state} busy={busy || maintaining} onClose={() => setDrawer(false)} onAction={send} />}
@@ -810,16 +825,34 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
   const drawEnd = lottery?.endAt || nextDrawAt(new Date(now)).getTime()
   const entriesClosed = Boolean(lottery?.drawn) || drawEnd <= now
   const [report, setReport] = useState(null)
+  const [printCycle, setPrintCycle] = useState(0)
+  const [drawReplay, setDrawReplay] = useState(null)
   // 开奖面板两种视图：往期号码（默认）与奖池预览；不落库，每次进页面回到默认。
   const [drawView, setDrawView] = useState('history')
   const claim = async () => {
     if (!claimable.length || busy) return
+    primeGameAudio()
     const data = await onAction('claimTickets')
-    if (data?.receipt) setReport(data.receipt)
+    if (!data?.receipt) return
+    setDrawReplay(null)
+    setReport(data.receipt)
+    if (data.receipt.rewards?.length) playGameCue('lottery-claim')
   }
   const assign = async () => {
     if (!safeQuantity || entriesClosed || busy) return
-    if (await onAction('craftTickets', { quantity: safeQuantity, tier: tierId }, '号码票已合成，可在下方查看。')) setQuantity(1)
+    primeGameAudio()
+    const data = await onAction('craftTickets', { quantity: safeQuantity, tier: tierId }, '号码票已合成，可在下方查看。')
+    if (!data) return
+    setQuantity(1)
+    setPrintCycle((cycle) => cycle + 1)
+    playGameCue('ticket-print')
+  }
+  const replayDraw = () => {
+    const draw = history[0]
+    if (!draw?.numbers?.length) return
+    primeGameAudio()
+    setDrawReplay({ issue: draw.issue, numbers: draw.numbers, poolName: tier.name })
+    playGameCue('lottery-draw')
   }
   return <>
     <PageHeader title="彩票中心" art="lottery" description="将空白票合成号码票，等待当期结果。" action={<div className="draw-countdown"><TimerReset size={16} /><b>{entriesClosed ? '本期已截止' : `距开奖 ${formatCountdown(drawEnd - now)}`}</b></div>} />
@@ -838,12 +871,21 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
         <div className="quantity-scale"><span>0</span><span>{Math.ceil(craftable / 2)}</span><span>{craftable}</span></div>
         <div className="field-label">选择奖池</div>
         <div className="pool-options">{lotteryTypes.map((type) => <button key={type.id} className={cn('pool-card', tierId === type.id && 'pool-selected')} aria-pressed={tierId === type.id} style={{ '--pool-color': type.accentColor }} onClick={() => setSelectedTier(type.id)}><strong>{type.name}</strong><span>{type.min} — {type.max} · {type.pick} 个号码</span><span className="pool-cost">×{type.ticketCost || 3}</span></button>)}</div>
-        <button className="primary-button wide" disabled={busy || !safeQuantity || entriesClosed} onClick={assign}><Ticket size={16} /> {entriesClosed ? '等待下一期' : `合成 ${safeQuantity} 张`}</button>
+        <div className="lottery-print-action">
+          <button className="primary-button wide" disabled={busy || !safeQuantity || entriesClosed} onClick={assign}><Ticket size={16} aria-hidden="true" /> {entriesClosed ? '等待下一期' : `合成 ${safeQuantity} 张`}</button>
+          {printCycle > 0 && <div key={printCycle} className="lottery-print-slip" aria-hidden="true">
+            <ItemIllustration item="彩票" fallback={<Ticket size={22} />} />
+            <span><Check size={13} /></span>
+          </div>}
+        </div>
         {!craftable && !entriesClosed && <p className="player-hint">在潮汐商会兑换鱼获可以获得空白票。</p>}
       </section>
       <section className="panel draw-panel" data-guide-anchor="pool"><div className="panel-topline"><div className="draw-tabs" role="tablist" aria-label="开奖面板视图"><button role="tab" aria-selected={drawView === 'history'} className={cn('draw-tab', drawView === 'history' && 'is-active')} onClick={() => setDrawView('history')}>往期号码</button><button role="tab" aria-selected={drawView === 'pool'} className={cn('draw-tab', drawView === 'pool' && 'is-active')} onClick={() => setDrawView('pool')}>奖池预览</button></div><span className="draw-pool">{tier.name}</span></div>
       {drawView === 'history'
-        ? (history.length ? <div className="draw-board">{history.map((item) => <div className="draw-lane" key={item.batchId} style={{ '--lane-color': tier.accentColor }} title={new Date(item.startAt).toLocaleString('zh-CN')}><span>第{item.issue}期</span><div>{item.numbers.map((n) => <b key={n}>{n}</b>)}</div></div>)}</div> : <div className="draw-placeholder"><strong>暂无开奖记录</strong></div>)
+        ? (history.length ? <div className="draw-board">
+          <button type="button" className="secondary-button lottery-replay-button" aria-haspopup="dialog" onClick={replayDraw}><Play size={14} aria-hidden="true" /> 回看最近期开奖</button>
+          {history.map((item) => <div className="draw-lane" key={item.batchId} style={{ '--lane-color': tier.accentColor }} title={new Date(item.startAt).toLocaleString('zh-CN')}><span>第{item.issue}期</span><div>{item.numbers.map((n) => <b key={n}>{n}</b>)}</div></div>)}
+        </div> : <div className="draw-placeholder"><strong>暂无开奖记录</strong></div>)
         : <LotteryPoolPreview tier={tier} />}
     </section></div>
     <div className="section-row"><div><h2>号码票</h2></div><div className="section-actions"><button className="secondary-button" disabled={busy || !claimable.length} onClick={claim}><Gift size={15} /> 一键兑奖 {claimable.length || ''}</button></div></div>
@@ -855,8 +897,19 @@ function LotteryPage({ state, now, onAction, lottery, busy }) {
       {!numberedTickets.length && <div className="panel numbered-empty"><EmptyState icon={Ticket} title="暂无号码票" /></div>}
     </div>
     <Pager {...pagedTickets} />
-    {report && <RewardReportModal title="彩票兑奖" extra={`已结算 ${report.count} 张彩票`} rewards={report.rewards} onClose={() => setReport(null)} />}
+    {drawReplay && <LotteryDrawReplay draw={drawReplay} onClose={() => setDrawReplay(null)} />}
+    {report && <RewardReportModal title="彩票兑奖" extra={<span className="lottery-report-summary"><Check size={16} aria-hidden="true" /> 已结算 {report.count} 张彩票</span>} rewards={report.rewards} onClose={() => setReport(null)} />}
   </>
+}
+
+function LotteryDrawReplay({ draw, onClose }) {
+  return <GameDialog title={`第 ${draw.issue} 期开奖回看`} className="lottery-replay-dialog" onClose={onClose}>
+    <div className="lottery-replay-meta"><ItemIllustration item="彩票" fallback={<Ticket size={21} />} /><span>{draw.poolName}</span></div>
+    <ul className="lottery-replay-numbers" aria-label="开奖号码">
+      {draw.numbers.map((number, index) => <li key={number} style={{ '--lottery-reveal-delay': `${Math.min(index, 10) * 55}ms` }}>{number}</li>)}
+    </ul>
+    <button className="secondary-button wide" onClick={onClose}>完成</button>
+  </GameDialog>
 }
 
 // 奖池预览：按命中个数列出这一场的奖励与精确概率（概率由 hitDistribution 的
@@ -928,11 +981,25 @@ function FxSparkline({ points }) {
   return <svg className={cn('fx-spark', up ? 'is-up' : 'is-down')} viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={up ? '走势上行' : '走势下行'} preserveAspectRatio="none"><path d={path} fill="none" strokeWidth="1.6" vectorEffect="non-scaling-stroke" /></svg>
 }
 
-// 一行一个词条：有开有收的迷你日线缩略 + 当前价 + 涨跌 + 持仓。
-// 选中的那一行下方直接展开它的 K 线，而不是把图统一放到列表底部。
-// 一行一个词条：迷你走势缩略 + 当前价 + 涨跌 + 持仓。
-// 选中那一行下方直接展开它的 K 线。
-// 行数据直接来自服务端快照（quotes），不再需要本地 board。
+function FxQuotePrice({ value }) {
+  const label = useRef(null)
+  const previous = useRef(value)
+  useEffect(() => {
+    const last = previous.current
+    previous.current = value
+    if (!Number.isFinite(last) || !Number.isFinite(value) || last === value || document.hidden ||
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // 初次加载或无变化的轮询不提示，只给新报价一次短暂的颜色提示。
+    const tint = value > last ? 'var(--success-line)' : 'var(--danger-line)'
+    const pulse = label.current?.animate?.([{ backgroundColor: tint }, { backgroundColor: 'transparent' }], {
+      duration: 410, easing: 'ease-out',
+    })
+    return () => pulse?.cancel()
+  }, [value])
+  return <b ref={label} className="market-quote-price">{fmtPrice(value)}</b>
+}
+
+// 选中标的的 K 线直接展开在这一行下方。
 function FxQuoteList({ rows, quotes, state, selected, onSelect, chart }) {
   return <div className="fx-table">
     {rows.map((row) => {
@@ -945,7 +1012,7 @@ function FxQuoteList({ rows, quotes, state, selected, onSelect, chart }) {
           <span className="material-icon fx-row-icon" style={{ color: row.color }}>{row.icon}</span>
           <span className="fx-row-name"><strong>{row.label}</strong><small>{quote.base}</small></span>
           <FxSparkline points={row.spark || []} />
-          <span className="fx-row-price"><b>{fmtPrice(quote.mid)}</b><small>{fmtPct(quote.change)}</small></span>
+          <span className="fx-row-price"><FxQuotePrice value={quote.mid} /><small>{fmtPct(quote.change)}</small></span>
           <span className={cn('fx-row-chg', quote.change > 0 ? 'is-up' : quote.change < 0 ? 'is-down' : 'is-flat')} aria-label={`涨跌 ${fmtPct(quote.change)}`}>{quote.change > 0 ? '▲' : quote.change < 0 ? '▼' : '—'}</span>
           <span className="fx-row-hold">{position ? `${position} 份` : '—'}</span>
         </button>
@@ -953,6 +1020,25 @@ function FxQuoteList({ rows, quotes, state, selected, onSelect, chart }) {
       </div>
     })}
     {!rows.length && <p className="admin-empty-line">无标的</p>}
+  </div>
+}
+
+function FxTradeReceipt({ fill }) {
+  const { label, side, qty, price, fee, requested } = fill
+  const selling = side === 'sell'
+  const subtotal = qty * price
+  return <div className="market-confirm market-receipt" data-tone={side}>
+    <div className="market-confirm-heading">
+      <span className="market-confirm-mark" aria-hidden="true"><Check size={15} /></span>
+      <strong>{selling ? '卖出' : '买入'} {label}</strong>
+      <span className={cn('market-fill-status', qty < requested && 'is-partial')}>{qty < requested ? '部分成交' : '已成交'}</span>
+    </div>
+    <dl className="market-receipt-values">
+      <div><dt>成交数量</dt><dd>{qty < requested ? `${qty} / ${requested}` : qty} 份</dd></div>
+      <div><dt>成交单价</dt><dd>{fmtPrice(price)} 鱼币</dd></div>
+      <div><dt>手续费</dt><dd>{fmtPrice(fee)} 鱼币</dd></div>
+      <div><dt>{selling ? '实际到账' : '实际支付'}</dt><dd>{fmtPrice(selling ? Math.max(0, subtotal - fee) : subtotal + fee)} 鱼币</dd></div>
+    </dl>
   </div>
 }
 
@@ -967,6 +1053,7 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
   const [qty, setQty] = useState(10)
   const [side, setSide] = useState('buy')
   const [filter, setFilter] = useState('all')
+  const [fill, setFill] = useState(null)
   // 每个标的各记一个档位；档位被锁定时回退到默认档。
   const [grainChoice, setGrainChoice] = useState({})
   const [candleCache, setCandleCache] = useState({})
@@ -998,15 +1085,17 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
   const clock = (at) => new Date(at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   const submit = async () => {
     if (!canTrade || busy) return
+    primeGameAudio()
     const verb = side === 'buy' ? '买入' : '卖出'
-    const feedback = ({ receipt }) => {
-      if (!receipt) return `${verb} ${quote.label} 已成交`
-      const { qty: filled, price, fee } = receipt
-      const status = filled < safeQty ? '部分成交' : '已成交'
-      return `${verb} ${quote.label} ×${filled} ${status} · 单价 ${fmtPrice(price)} · 手续费 ${fmtPrice(fee)} 鱼币`
-    }
-    const result = await onAction(side === 'buy' ? 'fxBuy' : 'fxSell', { name: quote.name, qty: safeQty }, feedback)
-    if (result) setQty(1)
+    const result = await onAction(side === 'buy' ? 'fxBuy' : 'fxSell', { name: quote.name, qty: safeQty }, ({ receipt }) => (
+      receipt ? '' : `${verb} ${quote.label} 已成交`
+    ))
+    if (!result) return
+    setQty(1)
+    const receipt = result.receipt
+    if (!receipt) return
+    setFill((previous) => ({ ...receipt, label: quote.label, requested: safeQty, sequence: (previous?.sequence || 0) + 1 }))
+    playGameCue(receipt.side === 'sell' ? 'fx-sell' : 'fx-buy')
   }
   const candleName = quote?.name
   const candleGrain = candleName ? grainOf(candleName) : ''
@@ -1116,6 +1205,9 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
           <button className={cn('primary-button wide', side === 'sell' && 'fx-sell-button')} disabled={busy || !canTrade} onClick={submit}>{session.open ? (side === 'buy' ? `买入 ${safeQty || ''}` : `卖出 ${safeQty || ''}`) : '休市中'}</button>
         </>}
         {!quote && <p className="admin-empty-line">无标的</p>}
+        <div role="status" aria-atomic="true">
+          {fill && <FxTradeReceipt key={fill.sequence} fill={fill} />}
+        </div>
       </aside>
     </div>
     <div className="section-row"><div><h2>成交</h2></div><span className="muted-copy">{trades.length}</span></div>
@@ -1324,16 +1416,31 @@ function WatcherOrders({ def, state, busy, onAction }) {
   const [side, setSide] = useState('buy')
   const [limit, setLimit] = useState('')
   const [quantity, setQuantity] = useState('1')
+  const [confirmation, setConfirmation] = useState(null)
   const orders = state.machines?.orders || []
   const symbolId = traits.some((item) => item.id === symbol) ? symbol : traits[0]?.id
   const price = Number(limit)
   const qty = Number(quantity)
   const full = orders.length >= (def.orders?.max || 2)
   const canSubmit = Boolean(symbolId && Number.isFinite(price) && price > 0 && Number.isInteger(qty) && qty > 0 && !full && !busy)
+  const confirm = (kind, orderSide, orderName) => {
+    const label = traits.find((item) => item.id === orderName)?.label || orderName
+    setConfirmation((previous) => ({ kind, side: orderSide, label, sequence: (previous?.sequence || 0) + 1 }))
+    playGameCue(kind === 'place' ? 'fx-order' : 'fx-cancel')
+  }
   const submit = async (event) => {
     event.preventDefault()
     if (!canSubmit) return
-    if (await onAction('machineOrderPlace', { name: symbolId, side, price, qty }, '限价委托已提交')) setLimit('')
+    primeGameAudio()
+    if (await onAction('machineOrderPlace', { name: symbolId, side, price, qty })) {
+      setLimit('')
+      confirm('place', side, symbolId)
+    }
+  }
+  const cancel = async (order) => {
+    if (busy) return
+    primeGameAudio()
+    if (await onAction('machineOrderCancel', { orderId: order.id })) confirm('cancel', order.side, order.name)
   }
   return <section className="watcher-orders" aria-label="盯盘机限价委托">
     <div className="watcher-head"><h3>限价委托</h3><span>{orders.length}/{def.orders?.max || 2} 单</span></div>
@@ -1345,12 +1452,21 @@ function WatcherOrders({ def, state, busy, onAction }) {
       <label className="admin-field"><span>份数</span><input className="admin-input" type="number" required min="1" inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
       <button className="secondary-button wide" disabled={!canSubmit}>{full ? '委托已满' : '提交委托'}</button>
     </form>
+    <div role="status" aria-atomic="true">
+      {confirmation && <div className="market-confirm market-order-confirm" data-tone={confirmation.kind === 'cancel' ? 'cancel' : confirmation.side} key={confirmation.sequence}>
+        <div className="market-confirm-heading">
+          <span className="market-confirm-mark" aria-hidden="true"><Check size={14} /></span>
+          <strong>{confirmation.kind === 'place' ? '限价委托已提交' : '委托已撤销'}</strong>
+        </div>
+        <span>{confirmation.side === 'sell' ? '卖出' : '买入'} {confirmation.label}</span>
+      </div>}
+    </div>
     {orders.length > 0 && <ul className="watcher-list">
       {orders.map((order) => <li key={order.id}>
         <div><strong>{order.side === 'buy' ? '买入' : '卖出'} {traits.find((item) => item.id === order.name)?.label || order.name}</strong><span>{fmtPrice(order.price)} 鱼币 · {order.qty} 份</span>
           {order.expireAt > 0 && <small>{new Date(order.expireAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 到期</small>}
         </div>
-        <button className="secondary-button tiny" disabled={busy} onClick={() => onAction('machineOrderCancel', { orderId: order.id }, '委托已撤销')}>撤单</button>
+        <button className="secondary-button tiny" disabled={busy} onClick={() => cancel(order)}>撤单</button>
       </li>)}
     </ul>}
   </section>
@@ -1997,7 +2113,15 @@ function FishExchangeRow({ fish, quote, onExchange, traits }) {
 }
 
 
-function SettingsPage({ state, user, onSetTheme, onUserChange, onProgressReset }) {
+function GameSoundToggle({ enabled, onToggle, compact = false }) {
+  const Icon = enabled ? Volume2 : VolumeX
+  return <button type="button" className={compact ? 'icon-button top-sound' : 'secondary-button sound-toggle'} aria-label="游戏音效" aria-pressed={enabled} title={enabled ? '关闭游戏音效' : '开启游戏音效'} onClick={onToggle}>
+    <Icon size={18} aria-hidden="true" />
+    {!compact && <span>{enabled ? '已开启' : '已静音'}</span>}
+  </button>
+}
+
+function SettingsPage({ state, user, onSetTheme, onUserChange, onProgressReset, soundEnabled, onToggleSound }) {
   const theme = normalizeSettings(state.settings).theme
   const setTheme = (id) => onSetTheme(id)
   return <>
@@ -2014,6 +2138,13 @@ function SettingsPage({ state, user, onSetTheme, onUserChange, onProgressReset }
             {active && <Check className="theme-check" size={15} aria-hidden="true" />}
           </button>
         })}
+      </div>
+    </section>
+    <section className="panel settings-panel">
+      <div className="panel-topline"><div><h2>声音</h2></div></div>
+      <div className="settings-row">
+        <div><strong>游戏音效</strong><small>合票、开奖回看、兑奖与行情操作的提示音。设置保存在此浏览器。</small></div>
+        <GameSoundToggle enabled={soundEnabled} onToggle={onToggleSound} />
       </div>
     </section>
     <section className="panel settings-panel">

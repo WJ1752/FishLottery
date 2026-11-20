@@ -1,0 +1,118 @@
+.market-quote-price {
+  justify-self: end;
+  margin-inline-end: -4px;
+  padding-inline: 4px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-confirm {
+  --market-tone: var(--success);
+  --market-tint: var(--success-soft);
+  --market-edge: var(--success-line);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--market-edge);
+  border-inline-start: 2px solid var(--market-tone);
+  border-radius: 8px;
+  background: var(--market-tint);
+}
+
+.market-confirm[data-tone='sell'] {
+  --market-tone: var(--danger);
+  --market-tint: var(--danger-soft);
+  --market-edge: var(--danger-line);
+}
+
+.market-confirm[data-tone='cancel'] {
+  --market-tone: var(--muted);
+  --market-tint: var(--surface-2);
+  --market-edge: var(--line-strong);
+}
+
+.market-confirm::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(104deg, transparent 20%, color-mix(in srgb, var(--market-tone) 12%, transparent) 50%, transparent 80%);
+  animation: market-confirm-sweep .48s ease-out both;
+}
+
+.market-confirm-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.market-confirm-mark {
+  display: grid;
+  flex: none;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid var(--market-edge);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--market-tone);
+  animation: market-confirm-stamp .24s ease-out both;
+}
+
+.market-fill-status {
+  margin-inline-start: auto;
+  color: var(--market-tone);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.market-fill-status.is-partial { color: var(--warning); }
+
+.market-receipt-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--market-edge);
+}
+
+.market-receipt-values dt { color: var(--muted); font-size: 11px; }
+.market-receipt-values dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font: 500 12px 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.market-order-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px 8px;
+}
+
+.market-order-confirm > span { color: var(--muted); font-size: 11px; }
+
+@keyframes market-confirm-sweep {
+  from { transform: translateX(-65%); opacity: 1; }
+  to { transform: translateX(65%); opacity: 0; }
+}
+
+@keyframes market-confirm-stamp {
+  from { transform: scale(.82); opacity: .55; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-confirm::before { display: none; }
+  .market-confirm-mark { animation: none; }
+}
