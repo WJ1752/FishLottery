@@ -70,12 +70,12 @@ function Field({ label, hint, children }) {
   return <label className="admin-field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>
 }
 
-function TextInput({ value, onChange, placeholder, type = 'text', min, max, step }) {
-  return <input className="admin-input" type={type} value={value} placeholder={placeholder} min={min} max={max} step={step} onChange={(event) => onChange(event.target.value)} />
+function TextInput({ value, onChange, placeholder, type = 'text', min, max, step, label }) {
+  return <input className="admin-input" type={type} value={value} placeholder={placeholder} min={min} max={max} step={step} aria-label={label} onChange={(event) => onChange(event.target.value)} />
 }
 
-function NumberInput({ value, onChange, min = 0, max, step = 1 }) {
-  return <TextInput type="number" value={value} min={min} max={max} step={step} onChange={(next) => onChange(Number(next))} />
+function NumberInput({ value, onChange, min = 0, max, step = 1, label }) {
+  return <TextInput type="number" value={value} min={min} max={max} step={step} label={label} onChange={(next) => onChange(Number(next))} />
 }
 
 function ColorInput({ value, onChange, label }) {
@@ -160,13 +160,13 @@ function ScratchAdmin({ config, patch }) {
           <Field label="备注"><TextInput value={type.note} onChange={(value) => update(type.id, (item) => ({ ...item, note: value }))} /></Field>
         </div>
         <div className="admin-subhead"><span>奖池</span><button className="text-button" onClick={() => update(type.id, (item) => ({ ...item, prizes: [...item.prizes, { id: `prize-${Date.now()}`, kind: 'material', name: MATERIAL_NAMES[0], qty: 1, weight: 1 }] }))}><CirclePlus size={14} /> 添加奖项</button></div>
-        <div className="admin-table scratch-pool-table">
+        <div className="admin-table ops-scroll-area scratch-pool-table" role="region" aria-label={`${type.name}奖池`} tabIndex={0}>
           <div className="admin-table-head"><span>奖励</span><span>数量</span><span>权重</span><span>所需相同</span><span>类型</span><span /></div>
           {type.prizes.map((prize, index) => <div className="admin-table-row" key={`${type.id}-${index}`}>
             <select className="admin-input" value={prize.name} aria-label="奖励" onChange={(event) => updatePrize(type.id, index, (item) => ({ ...item, name: event.target.value }))}>{prize.kind === 'coin' ? <option value={COIN.name}>{COIN.name}</option> : MATERIAL_NAMES.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-            <NumberInput value={prize.qty} min={1} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, qty: Math.max(1, value) }))} />
-            <NumberInput value={prize.weight} min={1} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, weight: Math.max(1, value) }))} />
-            <NumberInput value={prize.need || 2} min={2} max={type.slots} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, need: Math.min(type.slots, Math.max(2, Math.round(value))) }))} />
+            <NumberInput label={`${prize.name} 数量`} value={prize.qty} min={1} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, qty: Math.max(1, value) }))} />
+            <NumberInput label={`${prize.name} 权重`} value={prize.weight} min={1} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, weight: Math.max(1, value) }))} />
+            <NumberInput label={`${prize.name} 所需相同格数`} value={prize.need || 2} min={2} max={type.slots} onChange={(value) => updatePrize(type.id, index, (item) => ({ ...item, need: Math.min(type.slots, Math.max(2, Math.round(value))) }))} />
             <select className="admin-input" value={prize.kind || 'material'} aria-label="奖励类型" onChange={(event) => updatePrize(type.id, index, (item) => { const kind = event.target.value; return { ...item, kind, name: kind === 'coin' ? COIN.name : (MATERIAL_NAMES.includes(item.name) ? item.name : MATERIAL_NAMES[0]) } })}><option value="material">材料</option><option value="coin">鱼币</option></select>
             <DeleteButton label="删除奖项" onClick={() => update(type.id, (item) => ({ ...item, prizes: item.prizes.filter((_, i) => i !== index) }))} />
           </div>)}
@@ -326,7 +326,7 @@ function RodAdmin({ config, patch }) {
 
     <SectionHead title="钓竿横向对比" count={`${config.rods.length} 把`} />
     <section className="panel admin-card">
-      <div className="rod-compare-scroll">
+      <div className="rod-compare-scroll ops-scroll-area" role="region" aria-label="钓竿横向对比" tabIndex={0}>
         <table className="rod-compare">
           <thead>
             <tr>
@@ -338,11 +338,12 @@ function RodAdmin({ config, patch }) {
           </thead>
           <tbody>
             {config.rods.map((rod) => <tr key={rod.id}>
-              <td><TextInput value={rod.name} onChange={(value) => update(rod.id, (item) => ({ ...item, name: value }))} /></td>
-              <td><TextInput value={rod.rarity} onChange={(value) => update(rod.id, (item) => ({ ...item, rarity: value }))} /></td>
+              <td><TextInput label={`${rod.name} 名称`} value={rod.name} onChange={(value) => update(rod.id, (item) => ({ ...item, name: value }))} /></td>
+              <td><TextInput label={`${rod.name} 稀有度`} value={rod.rarity} onChange={(value) => update(rod.id, (item) => ({ ...item, rarity: value }))} /></td>
               <td><select className="admin-input" value={rod.maxDepth} aria-label={`${rod.name} 最高海域`} onChange={(event) => update(rod.id, (item) => ({ ...item, maxDepth: Number(event.target.value) }))}>{DEPTHS.map((depth, index) => <option key={depth.id} value={index}>{depth.label}</option>)}</select></td>
               {ROD_COMPARE_FIELDS.map((field) => <td key={field.key}>
                 <NumberInput
+                  label={`${rod.name} ${field.label}`}
                   value={field.percent ? Math.round(rod.resistance * 100) : rod[field.key]}
                   min={field.min}
                   max={field.max}
@@ -354,7 +355,7 @@ function RodAdmin({ config, patch }) {
               </td>)}
               <td><select className="admin-input" value={rod.breakable ? 'yes' : 'no'} aria-label={`${rod.name} 会损坏`} onChange={(event) => update(rod.id, (item) => ({ ...item, breakable: event.target.value === 'yes' }))}><option value="yes">是</option><option value="no">否</option></select></td>
               {TENSION_FIELDS.map((field) => <td key={field.key}>
-                <NumberInput value={rod.tension?.[field.key] ?? 0} min={field.min} step={field.step} onChange={(value) => setTension(rod.id, field.key, Math.max(field.min, value))} />
+                <NumberInput label={`${rod.name} ${field.label}`} value={rod.tension?.[field.key] ?? 0} min={field.min} step={field.step} onChange={(value) => setTension(rod.id, field.key, Math.max(field.min, value))} />
               </td>)}
             </tr>)}
           </tbody>
@@ -407,7 +408,7 @@ function TraitAdmin({ config, patch }) {
           <Field label="咬钩几率" hint="组合权重 = 各词条相乘"><NumberInput value={trait.biteChance} min={0.05} max={10} step={0.05} onChange={(value) => updateTrait(trait.id, (item) => ({ ...item, biteChance: Math.min(10, Math.max(0.05, value)) }))} /></Field>
         </div>
         <div className="admin-subhead"><span>实际效果</span><button className="text-button" onClick={() => updateTrait(trait.id, (item) => ({ ...item, effects: [...item.effects, { type: 'loss', mode: 'add', value: 1 }] }))}><CirclePlus size={14} /> 添加效果</button></div>
-        {trait.effects.length ? <div className="admin-table trait-effect-table">
+        {trait.effects.length ? <div className="admin-table ops-scroll-area trait-effect-table" role="region" aria-label={`${trait.label}的实际效果`} tabIndex={0}>
           <div className="admin-table-head"><span>效果</span><span>方式</span><span>数值</span><span /></div>
           {trait.effects.map((effect, index) => {
             const meta = TRAIT_EFFECT_TYPES.find((type) => type.id === effect.type)
@@ -423,7 +424,7 @@ function TraitAdmin({ config, patch }) {
                 updateEffect(trait.id, index, (item) => ({ ...item, type: nextId, mode: nextMode, value: nextValue }))
               }}>{TRAIT_EFFECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}</select>
               <select className="admin-input" value={effect.mode} aria-label="效果方式" disabled={lockedMode} onChange={(event) => updateEffect(trait.id, index, (item) => ({ ...item, mode: event.target.value }))}>{TRAIT_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}</select>
-              <NumberInput value={effect.value} min={min} step={step} onChange={(value) => updateEffect(trait.id, index, (item) => ({ ...item, value }))} />
+              <NumberInput label={`${meta?.label ?? '效果'} 数值`} value={effect.value} min={min} step={step} onChange={(value) => updateEffect(trait.id, index, (item) => ({ ...item, value }))} />
               <DeleteButton label="删除效果" onClick={() => updateTrait(trait.id, (item) => ({ ...item, effects: item.effects.filter((_, i) => i !== index) }))} />
             </div>
           })}
@@ -458,7 +459,7 @@ function DepthAdmin({ config, patch }) {
     <SectionHead title="海域词条权重" count={`${DEPTHS.length} 个海域`} />
     <section className="panel admin-card">
       <div className="admin-card-head"><div className="admin-card-title"><strong>海域解锁</strong></div></div>
-      <div className="admin-table">
+      <div className="admin-table ops-scroll-area ops-depth-table" role="region" aria-label="海域解锁费用" tabIndex={0}>
         <div className="admin-table-head depth-unlock-head"><span>海域</span><span>材料</span><span>数量</span><span>鱼币</span></div>
         {DEPTHS.map((item) => {
           const unlock = config.depthUnlocks?.[item.id] ?? item.unlock
@@ -467,8 +468,8 @@ function DepthAdmin({ config, patch }) {
             <span className="depth-unlock-name"><b style={{ color: item.color }}>{item.icon}</b> {item.label}</span>
             {free ? <span className="admin-empty-line">默认开放</span> : <>
               <select className="admin-input" value={unlock.material} aria-label={`${item.label} 解锁材料`} onChange={(event) => setUnlock(item.id, (entry) => ({ ...entry, material: event.target.value }))}>{MATERIAL_NAMES.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-              <NumberInput value={unlock.cost} min={0} onChange={(value) => setUnlock(item.id, (entry) => ({ ...entry, cost: Math.max(0, value) }))} />
-              <NumberInput value={unlock.coins} min={0} step={10} onChange={(value) => setUnlock(item.id, (entry) => ({ ...entry, coins: Math.max(0, value) }))} />
+              <NumberInput label={`${item.label} 所需材料数量`} value={unlock.cost} min={0} onChange={(value) => setUnlock(item.id, (entry) => ({ ...entry, cost: Math.max(0, value) }))} />
+              <NumberInput label={`${item.label} 所需鱼币`} value={unlock.coins} min={0} step={10} onChange={(value) => setUnlock(item.id, (entry) => ({ ...entry, coins: Math.max(0, value) }))} />
             </>}
           </div>
         })}
@@ -853,12 +854,12 @@ function BlackMarketAdmin({ config, patch }) {
 
     <SectionHead title="材料回收" count={`${Object.keys(materials).length} 种`} />
     <section className="panel admin-card">
-      <div className="admin-table">
+      <div className="admin-table ops-scroll-area ops-material-table" role="region" aria-label="材料回收价格" tabIndex={0}>
         <div className="admin-table-head admin-black-material-head"><span>材料</span><span>每 N 个</span><span>换渔币</span><span /></div>
         {Object.entries(materials).map(([name, rate]) => <div className="admin-table-row admin-black-material-row" key={name}>
           <span className="admin-black-material-name"><i style={{ background: MATERIALS[name]?.color || '#666' }} />{name}</span>
-          <NumberInput value={rate.per} min={1} onChange={(value) => setMaterial(name, 'per', Math.max(1, value))} />
-          <NumberInput value={rate.coins} min={0} onChange={(value) => setMaterial(name, 'coins', Math.max(0, value))} />
+          <NumberInput label={`${name} 数量`} value={rate.per} min={1} onChange={(value) => setMaterial(name, 'per', Math.max(1, value))} />
+          <NumberInput label={`${name} 兑换渔币`} value={rate.coins} min={0} onChange={(value) => setMaterial(name, 'coins', Math.max(0, value))} />
           <DeleteButton label={`停止回收 ${name}`} onClick={() => removeMaterial(name)} />
         </div>)}
         {!Object.keys(materials).length && <p className="admin-empty-line">暂不回收材料</p>}
@@ -1085,7 +1086,7 @@ function FxSettlementAdmin({ config, resetVersion, onGateError }) {
         <b>{totals ? `涨 ${totals.yesterdayUp} / 跌 ${totals.yesterdayDown}` : '—'}</b>
       </div>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <div className="admin-table fx-settle-table">
+      <div className="admin-table ops-scroll-area fx-settle-table" role="region" aria-label="昨日结算影响" tabIndex={0}>
         <div className="admin-table-head fx-settle-head">
           <span>标的</span><span>昨收</span><span>昨日涨跌</span><span>昨日净额</span><span>昨日成交</span><span>今开</span><span>昨日影响</span>
         </div>
@@ -1122,7 +1123,7 @@ function FxSettlementAdmin({ config, resetVersion, onGateError }) {
         <button className="secondary-button" disabled={loading} onClick={load}><RotateCcw size={13} /> {loading ? '刷新中…' : '刷新'}</button>
       </div>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <div className="admin-table fx-settle-table">
+      <div className="admin-table ops-scroll-area fx-settle-table" role="region" aria-label="今日结算预览" tabIndex={0}>
         <div className="admin-table-head fx-settle-head fx-settle-head-today">
           <span>标的</span><span>今开</span><span>现价</span><span>预计收盘</span><span>预计涨跌</span><span>今日净额</span><span>今日成交</span><span>失衡比</span><span>距结算</span>
         </div>
@@ -1396,7 +1397,7 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
   if (gate) return gate === 'TOTP_SETUP_REQUIRED'
     ? <TotpSetupPage onDone={loadOverview} onCancel={onBack} />
     : <StepUpPage onDone={loadOverview} onCancel={onBack} />
-  if (!overview) return <div className="panel admin-card">
+  if (!overview) return <div className="ops-console ops-loading">
     {loadError ? <>
       <p className="auth-error" role="alert">{loadError}</p>
       <button className="secondary-button" onClick={loadOverview}>重新读取</button>
@@ -1516,7 +1517,7 @@ function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) 
         <dt><BarChart3 size={15} aria-hidden="true" /> 近 5 分钟 API 请求</dt>
         <dd><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></dd>
       </div>
-      <div className="ops-metric">
+      <div className="ops-metric" data-state={job ? (job.failures ? 'warning' : 'active') : undefined}>
         <dt><TrendingUp size={15} aria-hidden="true" /> 开奖与行情结算</dt>
         <dd><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></dd>
       </div>
@@ -1562,7 +1563,7 @@ function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) 
     {overview.audit.length ? <table className="ops-audit" aria-label="近期操作记录">
       <thead><tr><th scope="col">操作</th><th scope="col">账号</th><th scope="col">时间</th></tr></thead>
       <tbody>{overview.audit.map((row) => <tr key={row.id}>
-        <td>{row.action}{row.detail ? ` · ${row.detail}` : ''}</td>
+        <td><strong>{row.action}</strong>{row.detail && <span className="ops-audit-detail">{row.detail}</span>}</td>
         <td>{row.username || '—'}</td>
         <td>{serviceTime(row.at)}</td>
       </tr>)}</tbody>

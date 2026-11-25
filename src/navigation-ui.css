@@ -13,7 +13,8 @@
   z-index: 24;
   top: 0;
   border-bottom: 1px solid var(--line-strong);
-  background: var(--bg);
+  background: var(--surface);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .bridge-line {
@@ -54,7 +55,7 @@
   min-width: 0;
 }
 
-.bridge-wallet { display: flex; align-items: center; gap: 8px; }
+.bridge-wallet { display: flex; align-items: center; gap: 10px; }
 .bridge-header .bridge-wallet .coin-chip {
   gap: 5px;
   padding: 0;
@@ -65,7 +66,8 @@
   font-family: inherit;
   white-space: nowrap;
 }
-.bridge-wallet .coin-chip b { font-size: 15px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bridge-wallet .coin-chip + .coin-chip { padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
+.bridge-wallet .coin-chip b { font: 700 15px/1.2 var(--font-mono); }
 .bridge-wallet .coin-chip .wallet-short { display: none; }
 .bridge-wallet .coin-chip .item-illustration { width: 21px; height: 21px; }
 .bridge-wallet .coin-unit { color: var(--muted); }
@@ -266,6 +268,7 @@
   .bridge-utilities { gap: 4px; }
   .bridge-wallet { gap: 6px; }
   .bridge-wallet .coin-chip b { font-size: 13px; }
+  .bridge-wallet .coin-chip + .coin-chip { padding-inline-start: 5px; }
   .bridge-wallet .coin-chip .wallet-full { display: none; }
   .bridge-wallet .coin-chip .wallet-short { display: inline; }
   .bridge-wallet .coin-chip .item-illustration { width: 18px; height: 18px; }
@@ -283,7 +286,7 @@
     min-height: var(--bridge-dock-height);
     padding: 0 6px env(safe-area-inset-bottom);
     border-top: 1px solid var(--line-strong);
-    background: var(--bg);
+    background: var(--surface);
   }
   .bridge-dock .bridge-route {
     display: grid;

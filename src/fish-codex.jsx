@@ -46,13 +46,16 @@ export default function FishCodex({ state }) {
         const count = Number(catches[fish.speciesClass]) || 0
         return <li className="fish-codex-card" key={fish.id}>
           <div className="fish-codex-plate">
-            <img src={fishArt(fish)} alt="" width="400" height="270" loading="lazy" decoding="async" />
+            <img src={fishArt(fish)} alt="" width="72" height="48" loading="lazy" decoding="async" />
             {count > 0 && <span className="fish-codex-check"><Check size={14} aria-hidden="true" /></span>}
           </div>
           <div className="fish-codex-record">
             <h3>{fish.name}</h3>
             <p className="fish-codex-latin" lang="la">{fish.latin}</p>
-            <p>{fish.waters.join(' · ')}<span>{count > 0 ? ` · 已钓获 ${count.toLocaleString('zh-CN')} 次` : ' · 待登记'}</span></p>
+            <p>{fish.waters.join(' · ')}</p>
+          </div>
+          <div className="fish-codex-tally">
+            {count > 0 ? <><strong>{count.toLocaleString('zh-CN')}</strong><span>钓获次数</span></> : <span>待登记</span>}
           </div>
         </li>
       })}

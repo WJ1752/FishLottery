@@ -492,8 +492,8 @@ function GameApp({ user, initialService, onUserChange, onSignOut, onSessionExpir
 
 function WalletBalance({ unit, amount = 0 }) {
   const full = amount.toLocaleString('zh-CN')
-  const short = amount >= 1000000 ? `${(amount / 10000).toLocaleString('zh-CN', { maximumFractionDigits: 1 })} 万` : full
-  return <div className={cn('coin-chip', unit === '渔币' && 'coin-chip-black')} role="group" aria-label={`${full} ${unit}`}>
+  const short = amount >= 1000000 ? amount.toLocaleString('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }) : full
+  return <div className={cn('coin-chip', unit === '渔币' && 'coin-chip-black')} role="group" aria-label={`${full} ${unit}`} title={`${full} ${unit}`}>
     <ItemIllustration item={unit} fallback={<Coins size={15} />} />
     <b className="wallet-full" aria-hidden="true">{full}</b><b className="wallet-short" aria-hidden="true">{short}</b>
     <span className="coin-unit" aria-hidden="true">{unit}</span>
@@ -546,13 +546,13 @@ function PageHeader({ title, description, action }) {
 
 function ItemIllustration({ item, fallback = null }) {
   const src = itemArt(item)
-  return <span className="item-illustration" aria-hidden="true">{src ? <img alt="" src={src} loading="lazy" decoding="async" /> : fallback}</span>
+  return <span className="item-illustration" aria-hidden="true">{src ? <img alt="" src={src} width="32" height="32" loading="lazy" decoding="async" /> : fallback}</span>
 }
 
 function FishPortrait({ fish, large = false }) {
   const src = fishArt(fish)
   return <span className={cn('fish-portrait', large && 'fish-portrait-large')} aria-hidden="true">
-    {src ? <img alt="" src={src} loading="lazy" decoding="async" /> : <Fish size={large ? 26 : 18} />}
+    {src ? <img alt="" src={src} width="72" height="48" loading="lazy" decoding="async" /> : <Fish size={large ? 26 : 18} />}
   </span>
 }
 
@@ -710,7 +710,7 @@ function FishingPage({ state, busy, now, clockOffset, fishingFeedback, onOpenDra
   const recoverSeconds = recovering ? Math.ceil((state.fishing.recoverUntil - at) / 1000) : 0
   const statusText = localPending ? '结算中' : recovering ? '鱼已脱钩' : reeling ? '咬钩中'
     : state.fishing.running ? '等待咬钩' : broken ? '钓竿损坏' : warehouseIsFull ? '仓库已满' : lowDurability ? '耐久不足' : '已暂停'
-  const toggleLabel = state.fishing.running ? '暂停钓鱼' : last ? '继续钓鱼' : '开始钓鱼'
+  const toggleLabel = state.fishing.running ? '暂停钓鱼' : last || progress > 0 ? '继续钓鱼' : '开始钓鱼'
   const guideConfig = useMemo(() => normalizeGuideConfig(state.config?.guide), [state.config?.guide])
   const guideState = state?.guide || {}
   const showGuide = guideConfig.enabled && !guideState.skipped
@@ -750,25 +750,25 @@ function FishingPage({ state, busy, now, clockOffset, fishingFeedback, onOpenDra
           <h2>{statusText}</h2><strong>{progressPercent}%</strong>
         </div>
         <progress className="water-meter" max="100" value={progressWidth} aria-label="钓鱼进度" />
-        <div className="water-tension">
-          <progress className="water-meter water-tension-meter" data-tension={tensionLevel} max="100" value={reeling || recovering ? tensionPercent : 0} aria-label="鱼线张力" />
-          {recovering
-            ? <span>{recoverSeconds} 秒后重试</span>
-            : <span>张力 <b>{reeling ? Math.round(tension) : 0}</b> / {Math.round(maxTension)}</span>}
-        </div>
-        <div className="water-rig-summary">
-          <button type="button" className="water-rig-link" onClick={onOpenDrawer} data-guide-anchor="durability" aria-haspopup="dialog">
-            <span>{rod.name} · 装备</span><ChevronRight size={13} aria-hidden="true" />
-          </button>
-          <span data-low={lowDurability}>耐久 <b>{Math.round(rod.durability)} / {rod.maxDurability}</b></span>
+        <div className="water-gauges">
+          <div className="water-gauge" data-level={tensionLevel}>
+            <div>{recovering ? '脱钩恢复' : '鱼线张力'} <strong>{recovering ? `${recoverSeconds} 秒` : `${reeling ? Math.round(tension) : 0} / ${Math.round(maxTension)}`}</strong></div>
+            <progress className="water-meter water-gauge-meter" max="100" value={reeling || recovering ? tensionPercent : 0} aria-label="鱼线张力" />
+          </div>
+          <div className="water-gauge" data-level={lowDurability ? 'critical' : 'safe'} data-guide-anchor="durability">
+            <div>钓竿耐久 <strong>{Math.round(rod.durability)} / {rod.maxDurability}</strong></div>
+            <progress className="water-meter water-gauge-meter" max={rod.maxDurability} value={Math.max(0, rod.durability)} aria-label="钓竿耐久" />
+          </div>
         </div>
       </div>
 
       <div className="water-controls">
-        <button type="button" className="primary-button water-toggle" disabled={reelDisabled} onClick={onToggle}>
+        <button type="button" className="primary-button water-toggle" data-running={state.fishing.running} disabled={reelDisabled} onClick={onToggle}>
           {state.fishing.running ? <Pause size={17} aria-hidden="true" /> : <Play size={17} aria-hidden="true" />}{toggleLabel}
         </button>
-        <span>{state.fishing.running ? '自动垂钓' : broken || lowDurability ? '可在装备中维修' : warehouseIsFull ? '兑换鱼获后继续' : '自动垂钓'}</span>
+        <button type="button" className="water-rig-link" onClick={onOpenDrawer} aria-haspopup="dialog" aria-label={`查看装备，${rod.name}`}>
+          <ItemIllustration item={rod} fallback={<Anchor size={15} />} /><span>装备与维修</span><ChevronRight size={13} aria-hidden="true" />
+        </button>
       </div>
 
       <div className="water-recent">
@@ -878,21 +878,24 @@ function SeaSelectorOverlay({ state, onClose, onSelect, onUnlock, busy }) {
     <div className="water-atlas-layout">
       <SeaChart stops={stops} inspectedId={depth.id} onInspect={inspect} />
       <section className="water-atlas-sheet" aria-label={`${depth.label}航路记录`}>
-        <header><h3>{depth.label}</h3><span>{status} · {depth.riskLabel}</span></header>
+        <header><h3>{depth.label}</h3><StatusPill tone={current || unlocked ? 'success' : canUnlock ? 'warning' : 'neutral'}>{status}</StatusPill><span>海况 · {depth.riskLabel}</span></header>
         {!unlocked && survey && <div className="water-atlas-survey">
           <p><span>{priorDepth}{survey.rewarded ? '调查完成' : '调查'}</span><strong>{progress} / {survey.target}</strong></p>
           <progress className="water-meter" value={progress} max={survey.target} aria-label={`${priorDepth}调查进度`} />
           <p>{survey.rewarded ? '调查奖励已入库。' : `在${priorDepth}钓获 ${survey.target} 条鱼。`}</p>
           {surveyRod && !survey.rewarded && <p>调查奖励 · {surveyRod.name}</p>}
         </div>}
-        {!unlocked && requirement && <dl className="water-atlas-cost">
-          <div><dt><ItemIllustration item={requirement.material} />{requirement.material}</dt><dd>{owned} / {requirement.cost}</dd></div>
-          <div><dt><Coins size={15} aria-hidden="true" />鱼币</dt><dd>{state.coins.toLocaleString('zh-CN')} / {requirement.coins.toLocaleString('zh-CN')}</dd></div>
-        </dl>}
-        <div className="water-atlas-fish"><h4>可钓鱼种</h4><p>{fishPoolFor(depth.id).map(({ name }) => name).join(' · ')}</p></div>
+        {!unlocked && requirement && <div className="water-atlas-fees">
+          <h4>解锁费用 <small>持有 / 所需</small></h4>
+          <dl className="water-atlas-cost">
+            <div><dt><ItemIllustration item={requirement.material} />{requirement.material}</dt><dd data-short={owned < requirement.cost}>{owned} / {requirement.cost}</dd></div>
+            <div><dt><ItemIllustration item="coin" />鱼币</dt><dd data-short={state.coins < requirement.coins}>{state.coins.toLocaleString('zh-CN')} / {requirement.coins.toLocaleString('zh-CN')}</dd></div>
+          </dl>
+        </div>}
         {unlocked
           ? !current && <button type="button" className="primary-button" disabled={busy} onClick={() => onSelect(depth.id)}>前往垂钓<ArrowRight size={15} aria-hidden="true" /></button>
           : <button type="button" className="primary-button" disabled={busy || !canUnlock} onClick={() => onUnlock(depth.id)}><Unlock size={15} aria-hidden="true" />解锁{depth.label}</button>}
+        <div className="water-atlas-fish"><h4>可钓鱼种</h4><p>{fishPoolFor(depth.id).map(({ name }) => name).join(' · ')}</p></div>
       </section>
     </div>
   </GameDialog>
@@ -1155,17 +1158,19 @@ function FxTradeReceipt({ fill }) {
   const { label, side, qty, price, fee, requested } = fill
   const selling = side === 'sell'
   const subtotal = qty * price
+  const settled = selling ? Math.max(0, subtotal - fee) : subtotal + fee
+  const partial = qty < requested
   return <div className="market-confirm market-receipt" data-tone={side}>
     <div className="market-confirm-heading">
       <span className="market-confirm-mark" aria-hidden="true"><Check size={15} /></span>
       <strong>{selling ? '卖出' : '买入'} {label}</strong>
-      <span className={cn('market-fill-status', qty < requested && 'is-partial')}>{qty < requested ? '部分成交' : '已成交'}</span>
+      <span className={cn('market-fill-status', partial && 'is-partial')}>{partial ? '部分成交' : '已成交'}</span>
     </div>
     <dl className="market-receipt-values">
-      <div><dt>成交数量</dt><dd>{qty < requested ? `${qty} / ${requested}` : qty} 份</dd></div>
-      <div><dt>成交单价</dt><dd>{fmtPrice(price)} 鱼币</dd></div>
-      <div><dt>手续费</dt><dd>{fmtPrice(fee)} 鱼币</dd></div>
-      <div><dt>{selling ? '实际到账' : '实际支付'}</dt><dd>{fmtPrice(selling ? Math.max(0, subtotal - fee) : subtotal + fee)} 鱼币</dd></div>
+      <div><dt>成交数量</dt><dd>{qty.toLocaleString('zh-CN')} <small>份</small>{partial && <small> / 委托 {requested.toLocaleString('zh-CN')} 份</small>}</dd></div>
+      <div><dt>成交单价</dt><dd>{fmtPrice(price)} <small>鱼币</small></dd></div>
+      <div><dt>手续费</dt><dd>{fmtPrice(fee)} <small>鱼币</small></dd></div>
+      <div className="market-receipt-total"><dt>{selling ? '实际到账' : '实际支付'}</dt><dd>{fmtPrice(settled)} <small>鱼币</small></dd></div>
     </dl>
   </div>
 }
@@ -1310,7 +1315,7 @@ function FxPage({ state, onAction, fxSnapshot, busy }) {
           </div>
           <div className="quantity-head fx-qty-head"><div><label htmlFor="fx-order-qty">交易数量</label> <small>最多 {affordable} 份</small></div><div className="quantity-rest">持仓 <b>{held}</b> / {config.maxPosition}</div></div>
           <div className="quantity-control">
-            <input className="quantity-range" type="range" min="0" max={Math.max(1, affordable)} value={Math.min(safeQty, Math.max(1, affordable))} aria-label="交易数量滑动条" disabled={!affordable} style={{ '--range-progress': affordable ? `${(Math.min(safeQty, affordable) / affordable) * 100}%` : '0%' }} onChange={(event) => setQty(event.target.value)} />
+            <input className="quantity-range" type="range" min="0" max={Math.max(1, affordable)} value={Math.min(safeQty, affordable)} aria-label="交易数量滑动条" disabled={!affordable} style={{ '--range-progress': affordable ? `${(Math.min(safeQty, affordable) / affordable) * 100}%` : '0%' }} onChange={(event) => setQty(event.target.value)} />
             <input id="fx-order-qty" className="quantity-input" type="number" min="0" max={Math.max(1, affordable)} value={safeQty} onChange={(event) => setQty(event.target.value)} />
           </div>
           <div className="fx-summary">
@@ -1366,14 +1371,13 @@ function MachineFishPicker({ state, machineId, limitKg, onClose, onAction }) {
   }
   return <GameDialog title="交付鱼" className="machine-picker" onClose={onClose}>
       <div className="machine-pick-head">
-        <strong>交付鱼</strong>
         <span>{picked.size} 条 · {totalKg.toFixed(1)} / {limitKg} kg</span>
       </div>
       <div className="machine-pick-list">
         {fresh.map((fish) => <button key={fish.id} className={cn('machine-pick-row', picked.has(fish.id) && 'is-picked')} onClick={() => toggle(fish.id)} aria-pressed={picked.has(fish.id)}>
-          <span className="machine-pick-name">{fish.name}</span>
+          <span className="machine-pick-name"><FishPortrait fish={fish} /> {fish.name}</span>
           <span className="machine-pick-meta">{fish.depth} · {fish.weight} kg</span>
-          <span className="machine-pick-value">◉ {quoteForFish(state, fish).pricing.total}</span>
+          <span className="machine-pick-value">估值 {quoteForFish(state, fish).pricing.total.toLocaleString('zh-CN')}</span>
         </button>)}
         {!fresh.length && <EmptyState icon={Fish} title="暂无鱼类" />}
       </div>
@@ -1670,9 +1674,9 @@ function ScratchPage({ state, onAction, onGuideSeen, busy, onOpenWorkshop }) {
     />}
     <div className="scratch-desk">
       <section className="scratch-desk-ready" data-guide-anchor="cards">
-        <ItemIllustration item="刮刮乐" fallback={<Gift size={42} />} />
+        <ItemIllustration item="scratch" fallback={<Gift size={42} />} />
         <div><h2>待刮卡片</h2><strong>{readyCards.length.toLocaleString('zh-CN')} <small>张</small></strong></div>
-        <button className="primary-button" disabled={!readyCards.length} onClick={() => setPicking(true)}>开始刮卡 <ArrowRight size={15} /></button>
+        <button className="primary-button" disabled={!readyCards.length} aria-haspopup="dialog" onClick={() => setPicking(true)}>开始刮卡 <ArrowRight size={15} /></button>
       </section>
       <section className="scratch-desk-claim" aria-label="兑奖清单">
         <dl className="scratch-receipt-strip">
@@ -1797,15 +1801,17 @@ function ScratchCard({ card, onReveal, onClaim, type, threshold = 0.45, radius =
       ctx.scale(width / rect.width, height / rect.height)
       ctx.fillStyle = type.coatColor || '#2f6f76'
       ctx.fillRect(0, 0, rect.width, rect.height)
-      ctx.fillStyle = 'rgba(42,60,53,.24)'
+      ctx.fillStyle = 'rgba(28,46,37,.26)'
       ctx.fillRect(0, 0, rect.width, rect.height)
-      ctx.strokeStyle = 'rgba(255,245,209,.22)'
-      for (let x = -rect.height; x < rect.width; x += 10) {
+      ctx.strokeStyle = 'rgba(255,245,209,.2)'
+      for (let x = -rect.height; x < rect.width; x += 12) {
         ctx.beginPath()
         ctx.moveTo(x, 0)
         ctx.lineTo(x + rect.height, rect.height)
         ctx.stroke()
       }
+      ctx.strokeStyle = 'rgba(255,245,209,.35)'
+      ctx.strokeRect(4.5, 4.5, Math.max(0, rect.width - 9), Math.max(0, rect.height - 9))
     }
     paint()
     const observer = new ResizeObserver(paint)
@@ -1903,7 +1909,7 @@ function ScratchCard({ card, onReveal, onClaim, type, threshold = 0.45, radius =
     onLostPointerCapture={end}
     onDragStart={(event) => event.preventDefault()}
   >
-    <div className="scratch-card-head"><span><ItemIllustration item="刮刮乐" fallback={<Gift size={16} />} />{type.name}</span><span>{revealed ? (card.pairs ? `${card.pairs} 组` : '—') : `${Math.round(progress * 100)}%`}</span></div>
+    <div className="scratch-card-head"><span><ItemIllustration item="scratch" fallback={<Gift size={16} />} />{type.name}</span><span>{revealed ? (card.pairs ? `${card.pairs} 组` : '—') : `${Math.round(progress * 100)}%`}</span></div>
     <div className="scratch-stage">
       <div className="scratch-face" style={{ gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))` }} aria-hidden={revealed ? undefined : 'true'}>
         {Array.from({ length: slots }, (_, index) => {
@@ -1938,6 +1944,7 @@ function BlackBuyPage({ state, onAction, busy }) {
   const cfg = config.blackMarket
   const bm = state.blackMarket || {}
   const order = bm.order
+  const lastSale = bm.lastSale
   const quota = blackDailyQuota(state, config)
   const sold = Number(bm.soldToday) || 0
   const traitById = (id) => (config.traits || []).find((trait) => trait.id === id)
@@ -1993,9 +2000,15 @@ function BlackBuyPage({ state, onAction, busy }) {
       </div>
       <dl className="black-desk-ledger">
         <div><dt>渔币余额</dt><dd>{(Number(bm.coins) || 0).toLocaleString('zh-CN')}</dd></div>
-        <div><dt>符合条件</dt><dd>{eligible.length} 条</dd></div>
+        <div><dt>符合条件</dt><dd>{eligible.length.toLocaleString('zh-CN')} <small>条</small></dd></div>
         <div><dt>已刷新</dt><dd>{Number(bm.rerolls) || 0} / {cfg.order.refreshLimit}</dd></div>
       </dl>
+      <div role="status" aria-atomic="true">
+        {lastSale && (lastSale.kind === 'fish' || lastSale.kind === 'material') && <div className="black-sale-receipt">
+          <strong><Check size={15} aria-hidden="true" /> {lastSale.kind === 'fish' ? `收购 ${lastSale.accepted} 条` : `回收 ${lastSale.name} ×${lastSale.spent}`}</strong>
+          <span>入账 <b>{(Number(lastSale.coins) || 0).toLocaleString('zh-CN')}</b> 渔币</span>
+        </div>}
+      </div>
     </section>
     <div className="section-row">
       <div><h2>仓库里的鱼</h2></div>
@@ -2008,8 +2021,8 @@ function BlackBuyPage({ state, onAction, busy }) {
       {paged.slice.map((fish) => <button key={fish.id} className={cn('black-fish-row', selected.has(fish.id) && 'is-picked')} onClick={() => toggle(fish.id)} aria-pressed={selected.has(fish.id)}>
         <span className="black-fish-check" aria-hidden="true">{selected.has(fish.id) && <Check size={13} />}</span>
         <FishPortrait fish={fish} />
-        <span className="black-fish-main"><strong>{fish.name}</strong><small>{fish.depth} · {(fish.traits || []).map((id) => traitById(id)?.label).filter(Boolean).join(' / ')}</small></span>
-        <span className="black-fish-value">◉ {blackFishValue(state, fish, config)}</span>
+        <span className="black-fish-main"><strong>{fish.name}</strong><small>{[fish.depth, ...(fish.traits || []).map((id) => traitById(id)?.label).filter(Boolean)].join(' · ')}</small></span>
+        <span className="black-fish-value"><ItemIllustration item="渔币" />{blackFishValue(state, fish, config).toLocaleString('zh-CN')}<span className="sr-only">渔币</span></span>
       </button>)}
       {!eligible.length && <div className="panel"><EmptyState icon={Fish} title="今天没有符合条件的鱼" /></div>}
     </div>
@@ -2020,9 +2033,9 @@ function BlackBuyPage({ state, onAction, busy }) {
         const held = Math.max(0, Math.floor(Number(state.inventory[name]) || 0))
         const groups = Math.floor(held / Math.max(1, rate.per))
         return <div className="black-material-row" key={name}>
-          <span className="black-material-name"><i style={{ color: MATERIALS[name]?.color }} aria-hidden="true">{MATERIALS[name]?.icon || '✳'}</i>{name}</span>
-          <span className="black-material-held">{held}</span>
-          <span className="black-material-rate">{rate.per} → {rate.coins} ◉</span>
+          <span className="black-material-name"><ItemIllustration item={name} fallback={<Package size={16} />} />{name}</span>
+          <span className="black-material-held">{held.toLocaleString('zh-CN')}</span>
+          <span className="black-material-rate">{rate.per} → {rate.coins} 渔币</span>
           <div className="black-material-actions">
             <button className="secondary-button" disabled={busy || groups < 1} onClick={() => onAction('blackSellMaterial', { name, units: 1 }, `回收 ${rate.per} 个${name}`)}>1 组</button>
             <button className="secondary-button" disabled={busy || groups < 10} onClick={() => onAction('blackSellMaterial', { name, units: 10 }, `回收 ${rate.per * 10} 个${name}`)}>10 组</button>
@@ -2113,7 +2126,7 @@ function BlackSuperPage({ state, onAction, busy }) {
       </div>
       <div className="black-base-list">
         {(superCard.base || []).map((item) => <span key={`${item.kind}:${item.name}`} className={cn('black-base-item', !item.qty && 'is-empty')}>
-          <i style={{ color: item.kind === 'coin' ? COIN.color : MATERIALS[item.name]?.color }} aria-hidden="true">{item.kind === 'coin' ? COIN.icon : MATERIALS[item.name]?.icon || '✳'}</i>
+          <ItemIllustration item={item.kind === 'coin' ? '鱼币' : item.name} fallback={<Package size={15} />} />
           {item.name} <b>{item.qty}</b>
         </span>)}
       </div>
@@ -2128,7 +2141,7 @@ function BlackSuperPage({ state, onAction, busy }) {
           const count = countOf(group)
           const max = Math.min(group.ids.length, cfg.maxInput)
           return <div className={cn('black-pick-row', count > 0 && 'is-picked')} key={group.id}>
-            <span className="black-pick-icon" style={{ color: group.type.coatColor }} aria-hidden="true">◇</span>
+            <span className="black-pick-icon" style={{ color: group.type.coatColor }}><ItemIllustration item="scratch" /></span>
             <div className="black-pick-copy"><strong>{group.type.name}</strong><small>可用 {group.ids.length}</small></div>
             <b className="black-pick-count">{count}</b>
             <input className="quantity-range black-pick-slider" type="range" min="0" max={max} value={count}
@@ -2149,7 +2162,7 @@ function BlackSuperPage({ state, onAction, busy }) {
       <div className="black-last-head"><strong>上次结算</strong><span>{last.totalCount} 张 · {last.bestCombo || 0} 连</span></div>
       <div className="black-last-rows">
         {(last.payouts || []).filter((item) => item.qty > 0).map((item, index) => <div className="black-last-row" key={`${item.kind}:${item.name}:${index}`}>
-          <span><i style={{ color: item.kind === 'coin' ? COIN.color : MATERIALS[item.name]?.color }} aria-hidden="true">{item.kind === 'coin' ? COIN.icon : MATERIALS[item.name]?.icon || '✳'}</i>{item.name}</span>
+          <span><ItemIllustration item={item.kind === 'coin' ? '鱼币' : item.name} fallback={<Package size={15} />} />{item.name}</span>
           <b>×{item.qty}</b>
         </div>)}
         {!(last.payouts || []).some((item) => item.qty > 0) && <span className="black-last-empty">无产出</span>}
@@ -2201,7 +2214,7 @@ function BlackShopPage({ state, onAction, busy }) {
         return <div className={cn('black-shop-row', disabled && 'is-disabled')} key={item.id}>
           <div className="black-shop-icon" aria-hidden="true"><ItemIllustration item={item} fallback={item.kind === 'rod' ? <Anchor size={18} /> : item.kind === 'theme' ? <Moon size={18} /> : item.kind === 'scale' ? <Scale size={18} /> : item.kind === 'quota' ? <TrendingUp size={18} /> : item.kind === 'repair' ? <Hammer size={18} /> : item.kind === 'module' ? <SlidersHorizontal size={18} /> : item.kind === 'grain' ? <TrendingUp size={18} /> : <TimerReset size={18} />} /></div>
           <div className="black-shop-copy"><strong>{item.name}</strong>{note && <small>{note}</small>}</div>
-          <span className="black-price">◉ {price.toLocaleString('zh-CN')}</span>
+          <span className="black-price"><ItemIllustration item="渔币" />{price.toLocaleString('zh-CN')}<span className="sr-only">渔币</span></span>
           <button className="secondary-button" disabled={disabled} onClick={() => onAction('blackBuy', { itemId: item.id }, `已购买 ${item.name}`)}>购买</button>
         </div>
       })}
@@ -2272,22 +2285,25 @@ function NpcPage({ state, onAction, busy }) {
         </div>
       </section>
       <section className="merchant-receipt" aria-label="兑换清单">
-        <div className="feature-section-head"><h2>兑换清单</h2><span>{filter}</span></div>
+        <div className="feature-section-head"><h2><Ticket size={17} aria-hidden="true" /> 兑换清单</h2><span>{filter}</span></div>
         <dl className="merchant-estimate">
           <div><dt>本次鱼获</dt><dd>{filtered.length.toLocaleString('zh-CN')} 条</dd></div>
-          {[...estimate].map(([name, qty]) => <div key={name}><dt>预计{name}</dt><dd>×{qty.toLocaleString('zh-CN')}</dd></div>)}
+          {[...estimate].map(([name, qty]) => <div key={name}><dt>预计{name}</dt><dd>× {qty.toLocaleString('zh-CN')}</dd></div>)}
         </dl>
         <button className="primary-button wide" disabled={!filtered.length || busy} onClick={exchangeAll}>全部兑换 <ArrowRight size={15} /></button>
         <div role="status" aria-atomic="true">
           {lastExchange?.at && <div className="merchant-receipt-paid">
-            <strong><Check size={16} aria-hidden="true" /> 已兑换 {lastExchange.count ?? 1} 条</strong>
-            <time dateTime={lastExchange.at}>{new Date(lastExchange.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+            <div>
+              <strong><Check size={15} aria-hidden="true" /> 已兑换 {(lastExchange.count ?? 1).toLocaleString('zh-CN')} 条</strong>
+              <time dateTime={lastExchange.at}>{new Date(lastExchange.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+            </div>
             <span>{lastExchange.count > 1 || !lastExchange.quote ? '奖励已入账' : quoteLabel(lastExchange.quote)}</span>
           </div>}
         </div>
       </section>
       <div className="merchant-stock">
         <div className="fish-exchange-list merchant-cabinet" aria-label="本页鱼获">
+          {filtered.length > 0 && <div className="merchant-register-head" aria-hidden="true"><span>鱼获</span><span>单条兑换</span></div>}
           {paged.slice.map(({ fish, quote }) => <FishExchangeRow key={fish.id} fish={fish} traits={traits} quote={quote} busy={busy} onExchange={() => onAction('exchangeFish', { fishId: fish.id })} />)}
           {!filtered.length && <div className="merchant-empty"><EmptyState icon={Fish} title="暂无符合条件的鱼获" /></div>}
         </div>
@@ -2302,14 +2318,14 @@ function FishExchangeRow({ fish, quote, onExchange, traits, busy }) {
   return <article className="fish-exchange-row">
     <FishPortrait fish={fish} />
     <div className="exchange-fish-main">
-      <div className="exchange-name"><strong>{fish.name}</strong><span className="exchange-meta">{fish.rarity} · {fish.depth} · {fish.weight} kg</span></div>
+      <div className="exchange-name"><strong>{fish.name}</strong><span className="exchange-meta">{fish.rarity} · {fish.depth}<span className="exchange-weight">{fish.weight} kg</span></span></div>
       {(fish.traits.length > 0 || pricing.comboLines.length > 0) && <details className="exchange-valuation">
         <summary>估值明细</summary>
         <div className="trait-tags">{fish.traits.map((id) => { const trait = traits.find((item) => item.id === id); return <span key={id}>{trait?.icon} {trait?.label || id} <small>{pricing.traitLines.find((line) => line.id === id)?.price ?? 0}</small></span> })}</div>
         {pricing.comboLines.length > 0 && <div className="price-combos">{pricing.comboLines.map((combo) => <span key={combo.id} className={combo.boosted ? 'is-boosted' : ''}>✦ {combo.name} <b>+{combo.total}</b>{combo.boosted && <small>+{Math.round(combo.bonus * 10) / 10}</small>}</span>)}</div>}
       </details>}
     </div>
-    <div className="exchange-bonus"><small>估值 {pricing.total}{tier ? ` · ${tier.max === null ? `${tier.min}+` : `${tier.min}–${tier.max}`}` : ''}</small><strong>{quoteLabel(quote)}</strong></div>
+    <div className="exchange-bonus"><strong>{quoteLabel(quote)}</strong><small>估值 {pricing.total.toLocaleString('zh-CN')}{tier ? ` · ${tier.max === null ? `${tier.min}+` : `${tier.min}–${tier.max}`}` : ''}</small></div>
     <button className="secondary-button" disabled={busy} aria-label={`兑换 ${fish.name}`} onClick={onExchange}>兑换 <ChevronRight size={14} aria-hidden="true" /></button>
   </article>
 }

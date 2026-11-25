@@ -1,3 +1,65 @@
+:is(.auth-portal-card, .settings-ledger, .ops-console) {
+  --form-edge: color-mix(in srgb, var(--line-strong) 69%, var(--ink));
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .admin-field > span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: normal;
+  line-height: 1.4;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .admin-input {
+  min-width: 0;
+  border: 1px solid var(--form-edge);
+  border-radius: 2px;
+  background: var(--surface-inset);
+  color: var(--ink);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .admin-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .admin-input:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .admin-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) :is(.auth-error, .auth-notice) {
+  margin: 0;
+  border-inline-start-width: 3px;
+  border-radius: 2px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+:is(.auth-portal-card, .settings-ledger, .ops-console) .auth-error { border-inline-start-color: var(--danger); }
+:is(.auth-portal-card, .settings-ledger, .ops-console) .auth-notice { border-inline-start-color: var(--success); color: var(--success); }
+
+:is(.settings-ledger, .ops-console) .status-pill {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+:is(.settings-ledger, .ops-console) .status-success { border-color: var(--success-line); }
+:is(.settings-ledger, .ops-console) .status-warning { border-color: var(--warning-line); }
+
 .auth-portal {
   display: flex;
   flex-direction: column;
@@ -9,22 +71,22 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 56px;
-  padding-inline: clamp(16px, 4vw, 64px);
-  border-block-end: 1px solid var(--line);
+  min-height: var(--bridge-header-height, 62px);
+  padding-inline: clamp(16px, 3.3vw, 56px);
+  border-block-end: 1px solid var(--line-strong);
   color: var(--ink);
-  background: var(--surface);
+  background: var(--bg);
 }
 
 .auth-portal-brand strong {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: .13em;
 }
 
 .auth-portal-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(326px, 1fr);
   align-items: stretch;
   width: min(100%, 1220px);
   margin: auto;
@@ -34,21 +96,28 @@
 .auth-portal-art {
   position: relative;
   isolation: isolate;
-  min-height: 400px;
+  min-height: 440px;
   overflow: hidden;
-  background: #235956;
+  border: 7px solid #434738;
+  border-block-end-width: 10px;
+  background: #29635c;
 }
 
 .auth-portal-card {
   align-content: center;
   display: grid;
-  gap: 16px;
+  gap: 18px;
   min-width: 0;
   padding: clamp(20px, 3.2vw, 44px);
   border: 1px solid var(--line);
-  border-block-start: 3px solid var(--danger);
+  border-block-start: 3px solid var(--signal);
   background: var(--surface);
   color: var(--ink);
+}
+
+.auth-portal-heading {
+  padding-block-end: 14px;
+  border-block-end: 1px solid var(--line);
 }
 
 .auth-portal-heading h1 {
@@ -73,47 +142,23 @@
   line-height: 1.55;
 }
 
-.auth-portal-card .auth-form { gap: 14px; }
-.auth-portal-card .admin-field { gap: 6px; }
-.auth-portal-card .admin-field > span,
-.settings-ledger .admin-field > span {
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 650;
-}
+.auth-portal-card .auth-form { gap: 13px; }
+:is(.auth-portal-card, .settings-ledger) .admin-field { gap: 6px; }
 .auth-portal-card .admin-field > small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.auth-portal .auth-portal-card .admin-input,
-.auth-portal-gate .auth-portal-card .admin-input,
-.settings-ledger .settings-form .admin-input {
-  min-width: 0;
-  min-height: 42px;
+:is(.auth-portal-card, .settings-ledger) .admin-input {
+  min-height: 44px;
   padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 2px;
-  background: var(--surface-inset);
-  color: var(--ink);
-  font: inherit;
   font-size: 16px;
-  line-height: 1.35;
 }
 
-.auth-portal .auth-portal-card .auth-code-input,
-.auth-portal-gate .auth-portal-card .auth-code-input,
-.settings-ledger .settings-form .auth-code-input {
-  font-family: ui-monospace, Consolas, monospace;
+:is(.auth-portal-card, .settings-ledger) .auth-code-input {
+  font-family: var(--font-mono);
   letter-spacing: .12em;
-}
-
-.auth-portal-card .admin-input:focus-visible,
-.settings-ledger .admin-input:focus-visible {
-  outline: 2px solid var(--danger);
-  outline-offset: 2px;
-  box-shadow: none;
 }
 
 .auth-portal-card .primary-button {
@@ -148,23 +193,21 @@
   text-underline-offset: 3px;
 }
 
-.auth-portal-card .service-bulletin { margin: 0; }
+.auth-portal-card .service-bulletin { flex-wrap: wrap; gap: 3px 9px; margin: 0; }
 .auth-portal-card .auth-subtitle { margin: 0; font-size: 13px; }
 
-.auth-portal-card .auth-error,
-.auth-portal-card .auth-notice,
 .auth-portal-card .auth-secret,
-.auth-portal-card .auth-codes code,
-.settings-ledger .auth-error,
-.settings-ledger .auth-notice {
+.auth-portal-card .auth-codes code {
   border-radius: 2px;
   margin: 0;
   font-size: 13px;
   overflow-wrap: anywhere;
 }
 
-.auth-portal-card .auth-secret span { font-size: 12px; letter-spacing: .03em; }
-.auth-portal-card .auth-codes code { letter-spacing: .04em; }
+.auth-portal-card .auth-secret { border-color: var(--form-edge); }
+.auth-portal-card .auth-secret span { color: var(--muted); font-size: 12px; letter-spacing: .03em; }
+.auth-portal-card .auth-codes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.auth-portal-card .auth-codes code { padding-inline: 5px; letter-spacing: .03em; }
 
 .auth-portal-gate {
   display: grid;
@@ -181,26 +224,32 @@
   display: grid;
   grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
   align-items: start;
-  gap: clamp(16px, 3vw, 38px);
+  gap: clamp(14px, 2vw, 28px);
 }
 
 .settings-ledger .settings-column {
   display: block;
   min-width: 0;
-  border-block-start: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
+  border-block-start: 2px solid var(--accent-line);
+  border-radius: 2px;
+  background: var(--surface);
 }
 
 .settings-ledger .settings-panel {
   min-width: 0;
   margin: 0;
-  padding: 18px 0 20px;
+  padding: clamp(13px, 1.7vw, 20px);
   border: 0;
   border-block-end: 1px solid var(--line);
   background: transparent;
 }
 
+.settings-ledger .settings-panel:last-child { border-block-end: 0; }
+
 .settings-ledger .panel-topline {
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
   margin-block-end: 12px;
 }
@@ -214,10 +263,10 @@
 }
 
 .settings-ledger .settings-row strong { font-size: 14px; }
-.settings-ledger .settings-row small { display: block; margin-top: 4px; font-size: 12px; }
+.settings-ledger .settings-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .settings-ledger .settings-row .mono-value {
   text-align: end;
-  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  font: 12px/1.45 var(--font-mono);
   color: var(--muted);
 }
 
@@ -226,16 +275,17 @@
 .settings-ledger .theme-options {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
+  gap: 5px;
 }
 
 .settings-ledger .theme-card {
   gap: 10px;
   padding: 8px 12px;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 2px;
-  background: var(--surface);
+  background: var(--surface-inset);
+  cursor: pointer;
 }
 
 .settings-ledger .theme-card.is-active {
@@ -244,15 +294,16 @@
 }
 
 .settings-ledger .theme-card:hover { border-color: var(--accent); }
-.settings-ledger .theme-card:has(input:focus-visible) { outline: 2px solid var(--danger); outline-offset: 2px; }
+.settings-ledger .theme-card:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
 .settings-ledger .theme-copy b { font-size: 14px; }
 .settings-ledger .theme-check { position: static; margin-inline-start: auto; }
 
 .settings-ledger .theme-swatch {
   display: flex;
+  flex: none;
   gap: 0;
-  width: 52px;
-  height: 20px;
+  width: 50px;
+  height: 21px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 1px;
@@ -289,14 +340,14 @@
   font-weight: 700;
 }
 
-.settings-ledger .settings-fold summary:focus-visible {
-  outline: 2px solid var(--danger);
-  outline-offset: 2px;
-}
+.settings-ledger .settings-fold[open] summary { margin-block-end: 6px; }
+.settings-ledger .settings-panel:has(.settings-reset) .settings-fold summary { color: var(--danger); }
 
 .settings-ledger .settings-form { max-width: 30rem; }
 .settings-ledger .settings-form > button { align-self: flex-start; }
-.settings-ledger .settings-fold-hint { margin: 0; color: var(--muted); font-size: 13px; }
+.settings-ledger .settings-confirm { flex-wrap: wrap; }
+.settings-ledger :is(.settings-form, .settings-row) button { min-height: 40px; }
+.settings-ledger .settings-fold-hint { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 
 @media (max-width: 690px) {
   .auth-portal-layout {
@@ -306,6 +357,10 @@
     padding: 16px;
   }
 
-  .auth-portal-art { min-height: clamp(130px, 24svh, 190px); }
-  .settings-ledger { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .auth-portal-brand { min-height: 52px; }
+  .auth-portal-art { min-height: clamp(136px, 22svh, 184px); border-width: 4px; }
+  .auth-portal-card { gap: 13px; padding: 19px; }
+  .auth-portal-heading { padding-block-end: 10px; }
+  .settings-ledger { grid-template-columns: minmax(0, 1fr); }
+  .settings-ledger :is(.settings-form, .settings-row) button { min-height: 44px; }
 }

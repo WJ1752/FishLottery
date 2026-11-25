@@ -1,9 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
-import { BOBBER_X, BOBBER_Y, WATER_HEIGHT, WATER_WIDTH, createSeaBase, drawChart, drawSea } from './water-art.js'
+import { BOBBER_X, BOBBER_Y, FISHER_X, WATER_HEIGHT, WATER_WIDTH, createSeaBase, drawChart, drawSea } from './water-art.js'
 import './water-scene.css'
-
-const CAMERA_X = .56
-const CAMERA_Y = .52
 
 function contextFor(canvas) {
   try { return canvas.getContext('2d') }
@@ -19,16 +16,23 @@ export function WaterScene({ depthId = 'shore', running = false, reeling = false
 
   useLayoutEffect(() => {
     const water = waterRef.current
-    const locateFloat = () => {
+    const frameScene = () => {
       const { width, height } = water.getBoundingClientRect()
       const scale = Math.max(width / WATER_WIDTH, height / WATER_HEIGHT)
-      const x = BOBBER_X * scale - (WATER_WIDTH * scale - width) * CAMERA_X
-      const y = BOBBER_Y * scale - (WATER_HEIGHT * scale - height) * CAMERA_Y
-      water.style.setProperty('--float-x', `${x}px`)
-      water.style.setProperty('--float-y', `${y}px`)
+      const sceneWidth = WATER_WIDTH * scale
+      const sceneHeight = WATER_HEIGHT * scale
+      const actionCenter = (FISHER_X + BOBBER_X) / 2
+      const left = Math.max(0, Math.min(sceneWidth - width, actionCenter * scale - width / 2))
+      const top = Math.max(0, (sceneHeight - height) * .65)
+      water.style.setProperty('--scene-width', `${sceneWidth}px`)
+      water.style.setProperty('--scene-height', `${sceneHeight}px`)
+      water.style.setProperty('--scene-left', `${-left}px`)
+      water.style.setProperty('--scene-top', `${-top}px`)
+      water.style.setProperty('--float-x', `${BOBBER_X * scale - left}px`)
+      water.style.setProperty('--float-y', `${BOBBER_Y * scale - top}px`)
     }
-    locateFloat()
-    const observer = new ResizeObserver(locateFloat)
+    frameScene()
+    const observer = new ResizeObserver(frameScene)
     observer.observe(water)
     return () => observer.disconnect()
   }, [])
@@ -52,7 +56,7 @@ export function WaterScene({ depthId = 'shore', running = false, reeling = false
     const reduced = () => !running || still || motion.matches
     const paint = (time) => {
       lastPaint = time
-      drawSea(ctx, image, time, { running, reeling, tensionLevel, event: kind, reducedMotion: reduced() })
+      drawSea(ctx, image, time, { depthId, running, reeling, tensionLevel, event: kind, reducedMotion: reduced() })
     }
     const tick = (time) => {
       if (time - lastPaint >= 68) paint(time)
@@ -86,7 +90,7 @@ export function WaterScene({ depthId = 'shore', running = false, reeling = false
     }
   }, [depthId, kind, reeling, running, still, tensionLevel])
 
-  return <div className="water-scene" ref={waterRef} style={{ '--camera-x': `${CAMERA_X * 100}%`, '--camera-y': `${CAMERA_Y * 100}%` }}>
+  return <div className="water-scene" ref={waterRef}>
     <canvas ref={canvasRef} width={WATER_WIDTH} height={WATER_HEIGHT} aria-hidden="true" />
     {unavailable && !still && <span className="water-render-note" role="status">海面画面暂不可用</span>}
     {children}
@@ -94,30 +98,46 @@ export function WaterScene({ depthId = 'shore', running = false, reeling = false
 }
 
 const CHART_POINTS = {
-  shore: [15, 55],
-  shelf: [29, 28],
-  open: [43, 65],
-  deep: [56, 38],
-  rift: [70, 63],
-  abyss: [84, 34],
+  shore: [15, 58],
+  shelf: [29, 32],
+  open: [43, 67],
+  deep: [56, 41],
+  rift: [70, 72],
+  abyss: [85, 42],
+}
+
+function stationRoute({ unlocked, canUnlock, status }) {
+  if (unlocked) return 'open'
+  return canUnlock || status === '调查中' ? 'survey' : 'locked'
 }
 
 export function SeaChart({ stops, inspectedId, onInspect }) {
   const ref = useRef(null)
+  const route = stops.map(stationRoute).join(' ')
   useLayoutEffect(() => {
     const ctx = contextFor(ref.current)
-    if (ctx) drawChart(ctx, Object.values(CHART_POINTS))
-  }, [])
+    if (!ctx) return undefined
+    const root = document.documentElement
+    const paint = () => drawChart(ctx, Object.values(CHART_POINTS), route.split(' '), root.dataset.theme)
+    paint()
+    const observer = new MutationObserver(paint)
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [route])
 
   return <div className="water-chart" role="group" aria-label="海图站点">
     <canvas ref={ref} width={WATER_WIDTH} height={280} aria-hidden="true" />
-    {stops.map(({ depth, status, current, unlocked }) => {
+    {stops.map((stop) => {
+      const { depth, status, current } = stop
       const [x, y] = CHART_POINTS[depth.id]
       return <button key={depth.id} type="button" className="water-chart-stop" style={{ '--map-x': `${x}%`, '--map-y': `${y}%` }}
         aria-pressed={depth.id === inspectedId} aria-current={current ? 'location' : undefined}
-        data-unlocked={unlocked} onClick={() => onInspect(depth.id)}>
+        data-route={stationRoute(stop)} onClick={() => onInspect(depth.id)}>
         <strong>{depth.label}</strong><small>{status}</small>
       </button>
     })}
+    <div className="water-chart-key" aria-label="航线图例">
+      <span data-route="open">已通航</span><span data-route="survey">调查／解锁</span><span data-route="locked">待解锁</span>
+    </div>
   </div>
 }

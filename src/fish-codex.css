@@ -1,6 +1,7 @@
-.fish-codex {
+.panel.fish-codex {
   margin-bottom: 20px;
   padding: 15px clamp(12px, 2.3vw, 24px) 19px;
+  border-top: 3px solid var(--accent);
   border-radius: 2px;
   color: var(--text);
   background: var(--surface);
@@ -20,27 +21,40 @@
 .fish-codex-progress strong { color: var(--ink); }
 .fish-codex-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
 
-.fish-codex-filters { display: flex; flex-wrap: wrap; gap: 13px; border-bottom: 1px solid var(--line-strong); }
-.fish-codex-filters button { min-height: 39px; padding: 5px 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; }
-.fish-codex-filters button[aria-pressed='true'] { border-color: var(--danger); color: var(--ink); font-weight: 700; }
+.fish-codex-filters { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line-strong); background: var(--surface-inset); }
+.fish-codex-filters button { min-height: 44px; padding: 5px clamp(8px, 1.8vw, 17px); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; }
+.fish-codex-filters button[aria-pressed='true'] { border-color: var(--signal); background: var(--accent-soft); color: var(--ink); font-weight: 700; }
 .fish-codex-filters button span { margin-inline-start: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .fish-codex-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 
-.fish-codex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); column-gap: 22px; margin: 0; padding: 0; list-style: none; }
+.fish-codex-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 22px; margin: 0; padding: 0; list-style: none; }
 .fish-codex-card {
   display: grid;
-  grid-template-columns: minmax(71px, 93px) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: clamp(68px, 10vw, 94px) minmax(0, 1fr) minmax(45px, auto);
+  gap: clamp(7px, 1.2vw, 16px);
   align-items: center;
   min-width: 0;
-  padding: 7px 0;
+  min-height: 83px;
+  padding: 9px 0;
   border-bottom: 1px solid var(--line);
 }
-.fish-codex-plate { position: relative; display: grid; place-items: center; aspect-ratio: 1.6; background: var(--surface-2); }
-.fish-codex-plate img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.fish-codex-plate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 2;
+  border: 1px solid var(--line-soft);
+  background: repeating-linear-gradient(90deg, var(--surface-2) 0 8px, var(--line-soft) 8px 9px) bottom 4px left 4px / calc(100% - 8px) 4px no-repeat, var(--surface-2);
+}
+.fish-codex-plate img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
 .fish-codex-check { position: absolute; right: -1px; bottom: -1px; display: grid; place-items: center; width: 21px; height: 21px; border: 1px solid var(--success-line); background: var(--surface); color: var(--success); }
 
-.fish-codex-record h3 { margin: 0; color: var(--ink); font-size: 14px; }
-.fish-codex-record p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.fish-codex-record h3 { margin: 0; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.fish-codex-record p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 .fish-codex-record .fish-codex-latin { font-style: italic; }
-.fish-codex-record span { font-variant-numeric: tabular-nums; }
+.fish-codex-tally { display: grid; justify-items: end; gap: 2px; color: var(--muted); font-size: .71rem; }
+.fish-codex-tally strong { color: var(--accent); font: 700 .96rem var(--font-mono); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 740px) {
+  .fish-codex-list { grid-template-columns: minmax(0, 1fr); }
+}

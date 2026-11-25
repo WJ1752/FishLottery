@@ -2,17 +2,36 @@ export const WATER_WIDTH = 568
 export const WATER_HEIGHT = 254
 export const BOBBER_X = 369
 export const BOBBER_Y = 169
+export const FISHER_X = 259
 const W = WATER_WIDTH
 const H = WATER_HEIGHT
 
-// 水色按由浅到深的图层排列。相同栈桥保留操作方位，地形随当前海域改变。
+// 栈桥保持固定方位，岸形、波向和水深随海域改变。
 const WATER_PALETTES = {
-  shore: ['#587f68', '#46755e', '#3b6b58', '#69896b', '#7d9b76'],
-  shelf: ['#29635c', '#22564f', '#20514e', '#316b5e', '#417967'],
-  open: ['#3b696d', '#345d63', '#2d515a', '#477a77', '#588582'],
-  deep: ['#2d515e', '#233b50', '#1d3044', '#365d66', '#426b70'],
-  rift: ['#414b65', '#31324f', '#282740', '#4a5569', '#5b6575'],
-  abyss: ['#243b41', '#192a33', '#121f2b', '#2a4549', '#355254'],
+  shore: ['#547b66', '#456e5a', '#3a6353', '#6f8a6e', '#839678'],
+  shelf: ['#30675f', '#265950', '#214d48', '#3c7468', '#50836f'],
+  open: ['#426a6a', '#355a60', '#2b4c57', '#4b7775', '#608582'],
+  deep: ['#375965', '#284350', '#203443', '#3f666d', '#527979'],
+  rift: ['#49566a', '#373f54', '#2a2f42', '#525e70', '#636d78'],
+  abyss: ['#293e43', '#1e3036', '#16252d', '#354d50', '#465c5a'],
+}
+
+const COASTS = {
+  shore: { reach: 1.12, shore: ['#75a18a', '#889374', '#b1a378', '#6e7c56', '#536247', '#82865c'] },
+  shelf: { reach: 1, shore: ['#549180', '#71816a', '#ad9d72', '#6c7654', '#505f42', '#7f8057'] },
+  open: { reach: .92, shore: ['#729b91', '#738a7f', '#a59d7e', '#676d58', '#4d594d', '#7d7e65'] },
+  deep: { reach: .72, shore: ['#698889', '#6f7c72', '#9a967d', '#606553', '#48574e', '#73775e'] },
+  rift: { reach: .63, shore: ['#737f94', '#727a80', '#89857c', '#64665d', '#4f5351', '#747569'] },
+  abyss: { reach: .55, shore: ['#536d6a', '#64766d', '#797f6a', '#555e51', '#3c4e47', '#656e5a'] },
+}
+
+const WAVE_DIRECTIONS = {
+  shore: [1, 0],
+  shelf: [1, -.04],
+  open: [1, .16],
+  deep: [-1, .14],
+  rift: [1, -.2],
+  abyss: [-1, -.12],
 }
 
 function randomFrom(seed) {
@@ -162,6 +181,9 @@ export function createSeaBase(location) {
 
   function habitat(location, rand) {
     if (location === 'shore') {
+      polygon(base, '#759378', [[252, 101], [275, 81], [299, 84], [316, 72], [349, 80], [363, 96], [337, 107], [300, 103], [275, 112]])
+      polygon(base, '#999e73', [[267, 99], [282, 89], [301, 92], [317, 80], [344, 88], [349, 96], [330, 101], [303, 98], [280, 105]])
+      for (const [x, y] of [[276, 97], [288, 89], [317, 85], [330, 93], [344, 98]]) reeds(x, y)
       const shoal = [[285, 207], [306, 192], [324, 195], [338, 185], [359, 194], [356, 208], [396, 220], [434, 254], [282, 254], [298, 236]]
       polygon(base, '#87936d', shoal)
       polygon(base, '#a7a47a', [[290, 254], [305, 233], [294, 216], [313, 202], [332, 204], [345, 196], [350, 209], [378, 217], [401, 236], [427, 254]])
@@ -169,7 +191,7 @@ export function createSeaBase(location) {
       mooredBoat(418, 74, base)
     }
     if (location === 'shelf') {
-      mooredBoat(454, 70, base)
+      mooredBoat(338, 68, base)
       mooredBoat(154, 217, base)
     }
     if (location === 'open') {
@@ -178,7 +200,7 @@ export function createSeaBase(location) {
       line(base, '#c1cfb38c', [[279, 105], [309, 118], [347, 111], [384, 90], [420, 94]])
     }
     if (location === 'deep') {
-      polygon(base, '#607b7c', [[405, 0], [432, 21], [414, 53], [420, 82], [397, 109], [405, 137], [384, 186], [380, 254], [568, 254], [568, 0]])
+      polygon(base, '#516a71', [[405, 0], [432, 21], [414, 53], [420, 82], [397, 109], [405, 137], [384, 186], [380, 254], [568, 254], [568, 0]])
       polygon(base, '#263c51', [[426, 0], [450, 26], [433, 57], [438, 84], [419, 114], [424, 141], [404, 191], [404, 254], [568, 254], [568, 0]])
       line(base, '#78918b', [[405, 0], [432, 21], [414, 53], [420, 82], [397, 109], [405, 137], [384, 186], [380, 254]])
       beacon(393, 205)
@@ -186,12 +208,13 @@ export function createSeaBase(location) {
     }
     if (location === 'rift') {
       const fracture = [[299, 0], [321, 32], [286, 63], [316, 80], [369, 85], [382, 111], [428, 121], [441, 153], [487, 172], [458, 207], [500, 254]]
-      line(base, '#6f7087', fracture, 16)
-      line(base, '#25263d', fracture, 11)
-      line(base, '#a298b9', fracture, 1.2)
+      line(base, '#687485', fracture, 19)
+      line(base, '#272b3d', fracture, 13)
+      line(base, '#9293a785', fracture.map(([x, y]) => [x - 7, y + 1]), 1.4)
       beacon(346, 102)
     }
     if (location === 'abyss') {
+      polygon(base, '#42625d', [[260, 36], [302, 6], [380, 16], [420, 57], [407, 111], [351, 140], [291, 115], [267, 92]])
       polygon(base, '#152c34', [[270, 39], [308, 15], [374, 26], [407, 61], [394, 105], [349, 129], [296, 107], [276, 83]])
       polygon(base, '#101e2b', [[287, 47], [314, 29], [368, 40], [391, 63], [381, 95], [344, 114], [308, 98], [289, 80]])
       for (let i = 0; i < 36; i += 1) {
@@ -206,55 +229,62 @@ export function createSeaBase(location) {
 
   function seaBase(location) {
     const [sea, deepWater, farWater, nearWater, shallowWater] = WATER_PALETTES[location] || WATER_PALETTES.shore
-    const rand = randomFrom(location === 'shelf' ? 192413 : 47323)
+    const { reach, shore } = COASTS[location] || COASTS.shore
+    const [surfColor, sandColor, coastColor, uplandColor, hillColor, hillLight] = shore
+    const coastPath = (points, offset = 0) => points.map(([x, y]) => [x === 0 ? 0 : Math.round(x * reach) + offset, y])
+    const [flow, slope] = WAVE_DIRECTIONS[location] || WAVE_DIRECTIONS.shore
+    const rand = randomFrom(47323 + Math.round(reach * 1000))
     blocks(base, sea, [[0, 0, W, H]])
     polygon(base, deepWater, [[271, 0], [568, 0], [568, 254], [351, 254], [347, 238], [310, 216], [314, 185], [282, 175], [291, 152], [259, 121], [269, 95], [236, 71], [243, 45], [229, 30]])
     polygon(base, farWater, [[480, 0], [568, 0], [568, 254], [410, 254], [428, 235], [438, 211], [421, 194], [439, 175], [435, 145], [458, 113], [446, 94], [482, 73], [469, 44]])
-    polygon(base, nearWater, [[0, 0], [232, 0], [222, 16], [232, 36], [204, 49], [211, 62], [180, 79], [183, 103], [148, 119], [153, 142], [135, 156], [139, 183], [114, 194], [118, 223], [107, 254], [0, 254]])
-    polygon(base, shallowWater, [[0, 0], [189, 0], [180, 20], [192, 36], [171, 52], [178, 70], [149, 86], [143, 102], [121, 119], [127, 135], [108, 157], [101, 167], [105, 186], [85, 200], [91, 223], [78, 254], [0, 254]])
+    polygon(base, nearWater, coastPath([[0, 0], [232, 0], [222, 16], [232, 36], [204, 49], [211, 62], [180, 79], [183, 103], [148, 119], [153, 142], [135, 156], [139, 183], [114, 194], [118, 223], [107, 254], [0, 254]], 8))
+    polygon(base, shallowWater, coastPath([[0, 0], [189, 0], [180, 20], [192, 36], [171, 52], [178, 70], [149, 86], [143, 102], [121, 119], [127, 135], [108, 157], [101, 167], [105, 186], [85, 200], [91, 223], [78, 254], [0, 254]], 4))
 
     const flecks = ['#66a18c43', '#7fb4a153', '#184b473f', '#b0c9a543', '#224c4538', '#81ad905e']
-    for (let i = 0; i < 1460; i += 1) {
+    for (let i = 0; i < 1240; i += 1) {
       const y = Math.floor(rand() * H)
       const x = Math.floor(rand() * W)
       const width = rand() < .14 ? Math.floor(8 + rand() * 11) : Math.floor(1 + rand() * 4)
       blocks(base, flecks[Math.floor(rand() * flecks.length)], [[x, y, width, 1]])
     }
-    for (let i = 0; i < 102; i += 1) {
+    for (let i = 0; i < 98; i += 1) {
       const x = Math.floor(rand() * W)
       const y = Math.floor(5 + rand() * (H - 8))
       const width = Math.floor(7 + rand() * 23)
-      const pale = x < 240 ? '#93bb9577' : '#78aa9066'
-      blocks(base, pale, [[x, y, width, 1], [x + width + 2, y + 1, Math.ceil(width / 3), 1]])
-      if (i % 4 === 0) blocks(base, '#143f3b65', [[x - 2, y + 3, width + 3, 1]])
+      const pale = x < 240 ? '#a7b99971' : '#8cb2a168'
+      const drift = Math.round(slope * width)
+      const end = flow > 0 ? x + width + 2 : x - 5
+      if (x > 248 && x < 392 && y > 120 && y < 190) continue
+      line(base, pale, [[x, y], [x + width, y + drift]], .8)
+      blocks(base, pale, [[end, y + (flow > 0 ? drift : 0) + 1, Math.ceil(width / 4), 1]])
+      if (i % 4 === 0) line(base, '#143f3b65', [[x - 2, y + 3], [x + width + 1, y + drift + 3]])
     }
 
-    const surf = shoreOutline.map(([x, y]) => [x === 0 ? 0 : x + 11, y])
-    const sand = shoreOutline.map(([x, y]) => [x === 0 ? 0 : x + 4, y])
-    polygon(base, '#549180', surf)
-    polygon(base, '#71816a', sand)
-    polygon(base, '#ad9d72', shoreOutline)
+    polygon(base, surfColor, coastPath(shoreOutline, 11))
+    polygon(base, sandColor, coastPath(shoreOutline, 4))
+    polygon(base, coastColor, coastPath(shoreOutline))
     const uplands = [[0, 0], [123, 0], [132, 12], [114, 25], [121, 34], [108, 50], [106, 61], [83, 72], [85, 86], [72, 94], [74, 113], [54, 126], [52, 154], [39, 169], [37, 186], [28, 203], [32, 221], [24, 234], [25, 254], [0, 254]]
-    polygon(base, '#6c7654', uplands)
-    polygon(base, '#505f42', [[0, 0], [91, 0], [103, 10], [76, 26], [81, 45], [65, 69], [46, 77], [45, 95], [31, 103], [31, 127], [21, 148], [22, 170], [0, 176]])
-    polygon(base, '#7f8057', [[31, 2], [82, 2], [68, 15], [53, 16], [47, 39], [27, 44], [16, 63], [12, 79], [0, 84], [0, 47], [18, 30]])
-    polygon(base, '#b4a475', [[0, 140], [32, 153], [40, 160], [84, 193], [80, 198], [47, 182], [20, 174], [0, 168]])
+    polygon(base, uplandColor, coastPath(uplands))
+    polygon(base, hillColor, coastPath([[0, 0], [91, 0], [103, 10], [76, 26], [81, 45], [65, 69], [46, 77], [45, 95], [31, 103], [31, 127], [21, 148], [22, 170], [0, 176]]))
+    polygon(base, hillLight, coastPath([[31, 2], [82, 2], [68, 15], [53, 16], [47, 39], [27, 44], [16, 63], [12, 79], [0, 84], [0, 47], [18, 30]]))
+    polygon(base, coastColor, coastPath([[0, 140], [32, 153], [40, 160], [84, 193], [80, 198], [47, 182], [20, 174], [0, 168]]))
     for (let i = 0; i < 480; i += 1) {
       const y = Math.floor(rand() * H)
-      const x = Math.floor(rand() * Math.max(28, 117 - y * .41))
+      const x = Math.floor(rand() * Math.max(28, 117 - y * .41) * reach)
       const tone = ['#4552477c', '#bdb6806c', '#d1ba8260', '#43583b6b', '#384a3966'][i % 5]
       blocks(base, tone, [[x, y, i % 6 ? 1 : 4, i % 7 ? 1 : 2]])
     }
     for (let i = 0; i < 65; i += 1) {
       const y = Math.floor(rand() * H)
-      tuft(Math.floor(rand() * Math.max(22, 90 - y * .32)), y, i % 3 === 0)
+      tuft(Math.floor(rand() * Math.max(22, 90 - y * .32) * reach), y, i % 3 === 0)
     }
 
     const rocks = [[139, 4, .73], [150, 27, .76], [122, 45, .88], [142, 51, .5], [94, 69, 1.13], [133, 79, .57], [83, 99, .65], [103, 101, .45], [78, 127, .62], [68, 153, .43], [55, 197, .68], [33, 213, .75], [47, 233, .4], [21, 236, .6], [195, 65, .64], [210, 70, .34], [188, 88, .36], [25, 83, .6], [15, 109, .47], [113, 15, .47]]
-    for (const [x, y, size] of rocks) rock(x, y, size, x < 157 && y % 2)
+    for (const [x, y, size] of rocks) rock(Math.round(x * reach), y, size, x < 157 && y % 2)
     const foam = '#aec3a371'
     for (const [x, y] of [[169, 14], [170, 34], [159, 63], [141, 69], [125, 101], [117, 125], [104, 134], [85, 154], [72, 179], [65, 193], [58, 209], [59, 229], [50, 245], [208, 69]]) {
-      blocks(base, foam, [[x, y, 7, 1], [x + 5, y + 2, 6, 1], [x - 5, y + 4, 4, 1]])
+      const shoreX = Math.round(x * reach)
+      blocks(base, foam, [[shoreX, y, 7, 1], [shoreX + 5, y + 2, 6, 1], [shoreX - 5, y + 4, 4, 1]])
     }
 
     habitat(location, rand)
@@ -285,7 +315,7 @@ const foamBits = Array.from({length: 44}, (_, index) => {
 })
 
 function fisher(ctx, running) {
-  const x = 259
+  const x = FISHER_X
   const y = 147
   blocks(ctx, '#353c30a0', [[x - 5, y + 5, 18, 5], [x - 2, y + 9, 20, 3]])
   blocks(ctx, '#333f36', [[x - 3, y, 6, 8], [x + 3, y + 1, 5, 9], [x - 5, y + 7, 8, 3], [x + 4, y + 8, 7, 3]])
@@ -300,17 +330,21 @@ function fisher(ctx, running) {
 }
 
 export function drawSea(ctx, stageBase, time, visual) {
-  const { running, reeling, event, tensionLevel, reducedMotion } = visual
+  const { depthId, running, reeling, event, tensionLevel, reducedMotion } = visual
   const outcome = event === 'landed' || event === 'discovery' || event === 'escape'
+  const [flow, slope] = WAVE_DIRECTIONS[depthId] || WAVE_DIRECTIONS.shore
   const t = reducedMotion ? 0 : time / 1000
   ctx.drawImage(stageBase, 0, 0)
   for (const bit of foamBits) {
     if (bit.y > 132 && bit.y < 201 && bit.x < 297) continue
-    const x = Math.round(bit.x + Math.sin(t / 1.8 + bit.phase) * 3)
-    const alpha = .19 + (.5 + Math.sin(t * .66 + bit.phase) / 2) * .37
-    ctx.fillStyle = `rgba(163, 191, 153, ${alpha})`
-    ctx.fillRect(x, Math.round(bit.y), bit.size, 1)
-    if (bit.size > 11) ctx.fillRect(x + bit.size + 3, Math.round(bit.y) + 1, 3, 1)
+    if (bit.y > 120 && bit.y < 190 && bit.x > 247 && bit.x < 394) continue
+    const x = Math.round(bit.x + Math.sin(t / 1.8 - bit.phase) * 4 * flow)
+    const y = Math.round(bit.y)
+    const alpha = .13 + (.5 + Math.sin(t * .66 + bit.phase) / 2) * .28
+    const drift = Math.round(bit.size * slope)
+    const color = `rgba(172, 194, 161, ${alpha})`
+    line(ctx, color, [[x, y], [x + bit.size, y + drift]], .8)
+    if (bit.size > 11) blocks(ctx, color, [[flow > 0 ? x + bit.size + 3 : x - 5, y + (flow > 0 ? drift : 0) + 1, 3, 1]])
   }
   fisher(ctx, running)
   const dip = reeling ? tensionLevel === 'critical' ? 4 : 2 : 0
@@ -319,9 +353,11 @@ export function drawSea(ctx, stageBase, time, visual) {
   const lineStart = [286, running ? 136 : 141]
   const lineEnd = event === 'escape' ? [x - 12, y - 6] : [x, y]
   const linePath = reeling ? [lineStart, lineEnd] : [lineStart, [308, 144], [325, 151], [346, 160], lineEnd]
-  line(ctx, reeling ? '#f1dcaa' : '#e4ddaa9b', linePath, reeling ? 1.05 : .8)
-  ctx.strokeStyle = tensionLevel === 'critical' ? '#e4a48ab8' : '#d2e0b493'
-  ctx.lineWidth = .8
+  const lineColor = reeling && tensionLevel === 'critical' ? '#ffd3ae' : reeling ? '#f6e1a9' : '#e4e3bd'
+  line(ctx, '#1b3035bd', linePath, 2.5)
+  line(ctx, lineColor, linePath, reeling ? 1.35 : 1.1)
+  ctx.strokeStyle = tensionLevel === 'critical' ? '#f6b296d2' : '#d6e4b9ae'
+  ctx.lineWidth = .9
   const rings = outcome || event === 'bite' ? [7, 14, 22] : running ? [6, 12] : [7]
   for (const [i, ring] of rings.entries()) {
     const shift = Math.sin(t * 2 + i) * (outcome ? 4 : 2)
@@ -329,45 +365,73 @@ export function drawSea(ctx, stageBase, time, visual) {
     ctx.ellipse(x, y + 2, ring + shift, ring * .32, 0, 0, Math.PI * 2)
     ctx.stroke()
   }
-  blocks(ctx, '#163c35a0', [[x - 3, y + 2, 8, 2]])
-  blocks(ctx, '#b9503d', [[x - 1, y - 5 + dip, 3, 7 - dip]])
-  blocks(ctx, '#f7dd9b', [[x - 1, y - 5 + dip, 3, 2], [x + 1, y, 1, 2]])
+  blocks(ctx, '#19332f', [[x - 4, y + 2, 9, 2], [x - 3, y - 5 + dip, 6, 8 - dip]])
+  blocks(ctx, '#c7634a', [[x - 2, y - 5 + dip, 4, 7 - dip]])
+  blocks(ctx, '#fce5ab', [[x - 2, y - 5 + dip, 4, 2], [x + 1, y, 1, 2]])
   if (outcome) {
     blocks(ctx, '#e5eac2c7', [[x + 5, y - 5, 3, 1], [x - 7, y - 4, 2, 1], [x, y - 11, 1, 2]])
   }
 }
 
-export function drawChart(ctx, points) {
+const CHART_PALETTES = {
+  light: {
+    water: '#dbe2cc', deep: '#becfc2', land: '#c6c5a6', coast: '#536c5d', grid: '#78937b4d',
+    ink: '#43594e', contour: '#708c78', fleck: '#84978257', highlight: '#eef0d589',
+    open: '#275c48', survey: '#954735', locked: '#627365',
+  },
+  dark: {
+    water: '#263936', deep: '#203033', land: '#3a4436', coast: '#8b9c7b', grid: '#7a9b8553',
+    ink: '#b9c9b6', contour: '#779786', fleck: '#71957e43', highlight: '#4e685657',
+    open: '#b3d8b1', survey: '#e4a386', locked: '#9cae9f',
+  },
+  void: {
+    water: '#1c292b', deep: '#121d23', land: '#343b31', coast: '#879687', grid: '#82958e49',
+    ink: '#b8c8bf', contour: '#7a9188', fleck: '#648b8443', highlight: '#56716b56',
+    open: '#b3d8b1', survey: '#e4a386', locked: '#9cae9f',
+  },
+}
+
+const CHART_DASHES = { open: [], survey: [6, 4], locked: [2, 5] }
+
+export function drawChart(ctx, points, route, theme) {
+  const palette = CHART_PALETTES[theme] || CHART_PALETTES.light
   const rand = randomFrom(554034)
-  blocks(ctx, '#d8d9c2', [[0, 0, 568, 280]])
-  for (let i = 0; i < 3400; i += 1) blocks(ctx, i % 3 ? '#a8af9254' : '#eeefdb85', [[Math.floor(rand() * 568), Math.floor(rand() * 280), rand() * 3 + 1, 1]])
-  const coast = [[0, 0], [183, 0], [179, 17], [155, 39], [178, 63], [131, 66], [127, 90], [95, 117], [85, 144], [91, 170], [75, 193], [58, 220], [57, 253], [69, 280], [0, 280]]
-  polygon(ctx, '#bcbd9d', coast)
-  line(ctx, '#5b7768', coast.slice(1, -1), 1.6)
-  for (let i = 1; i <= 13; i += 1) {
-    const off = i * 32
-    const points = coast.slice(1, -1).map(([x, y], row) => [x + off + Math.sin(i * .32 + y * .044) * (12 + i / 2), y + row % 2 * 4])
-    line(ctx, i % 4 === 0 ? '#809481aa' : '#78907d43', [[186 + off, 0], ...points, [100 + off, 280]])
-  }
-  for (let i = 1; i < 12; i += 1) line(ctx, '#7e938333', [[i * 49, 0], [i * 49, 280]])
-  for (let i = 1; i < 7; i += 1) line(ctx, '#7e938333', [[0, i * 44], [568, i * 44]])
+  blocks(ctx, palette.water, [[0, 0, W, 280]])
+  polygon(ctx, palette.deep, [[492, 0], [W, 0], [W, 280], [375, 280], [350, 246], [375, 206], [414, 171], [418, 138], [453, 99], [474, 52]])
+  const coast = [[127, 0], [130, 20], [101, 41], [111, 64], [87, 71], [85, 96], [59, 117], [56, 142], [60, 169], [42, 195], [46, 215], [30, 237], [31, 259], [46, 280]]
+  polygon(ctx, palette.land, [[0, 0], ...coast, [0, 280]])
+  for (let i = 0; i < 1900; i += 1) blocks(ctx, i % 3 ? palette.fleck : palette.highlight, [[Math.floor(rand() * W), Math.floor(rand() * 280), rand() * 3 + 1, 1]])
+  for (let i = 1; i < 12; i += 1) line(ctx, palette.grid, [[i * 48, 0], [i * 48, 280]], .75)
+  for (let i = 1; i < 7; i += 1) line(ctx, palette.grid, [[0, i * 42], [W, i * 42]], .75)
   ctx.save()
-  ctx.setLineDash([5, 3])
-  const waypoints = points.map(([x, y]) => [x * W / 100, y * 280 / 100])
-  const route = waypoints.flatMap(([x, y], index) => {
-    if (index === 0) return [[x, y]]
-    const [prevX, prevY] = waypoints[index - 1]
-    return [[(x + prevX) / 2, prevY * .7 + y * .3 + 9], [x, y]]
-  })
-  line(ctx, '#8e5146', route, 1.6)
-  ctx.restore()
-  for (const [x, y] of waypoints) {
-    blocks(ctx, '#974b3f', [[x - 4, y - 4, 8, 8]])
-    blocks(ctx, '#eeead0', [[x - 2, y - 2, 4, 4]])
+  for (let i = 1; i <= 10; i += 1) {
+    const contour = coast.map(([x, y], row) => [x + i * 43 + Math.sin(i * .64 + y * .024) * (11 + i * 1.2), y + row % 2 * 3])
+    ctx.globalAlpha = i % 3 === 0 ? .64 : .34
+    line(ctx, palette.contour, contour, i % 3 === 0 ? 1.1 : .8)
   }
-  for (const [x, y, z] of [[20, 103, 3], [88, 125, 5], [154, 194, 12], [240, 193, 18], [292, 53, 23], [361, 95, 31], [488, 155, 52], [479, 247, 48], [315, 235, 27], [537, 100, 65]]) {
-    ctx.font = '6px monospace'
-    ctx.fillStyle = '#596c5e'
+  ctx.restore()
+  line(ctx, palette.coast, coast, 1.65)
+
+  const waypoints = points.map(([x, y]) => [x * W / 100, y * 280 / 100])
+  ctx.save()
+  ctx.lineCap = 'round'
+  for (let i = 1; i < waypoints.length; i += 1) {
+    const [prevX, prevY] = waypoints[i - 1]
+    const [x, y] = waypoints[i]
+    const status = route[i] || 'locked'
+    const path = [[prevX, prevY], [prevX * .38 + x * .62, prevY * .66 + y * .34 + 8], [x, y]]
+    line(ctx, palette.water, path, 4)
+    ctx.setLineDash(CHART_DASHES[status])
+    line(ctx, palette[status], path, status === 'locked' ? 1.5 : 2.1)
+    ctx.setLineDash([])
+  }
+  ctx.restore()
+
+  ctx.font = '10px monospace'
+  ctx.fillStyle = palette.ink
+  ctx.fillText('N', 32, 25)
+  polygon(ctx, palette.ink, [[35, 29], [41, 49], [35, 45], [29, 49]])
+  for (const [x, y, z] of [[65, 91, 3], [94, 210, 5], [176, 126, 12], [218, 219, 18], [252, 61, 23], [343, 159, 31], [446, 159, 41], [496, 216, 48], [337, 239, 37], [531, 77, 65]]) {
     ctx.fillText(z, x, y)
   }
 }

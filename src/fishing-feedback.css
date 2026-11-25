@@ -1,5 +1,6 @@
 .fishing-feedback {
   --marker-width: 54px;
+  --float-clearance: 22px;
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -7,27 +8,28 @@
 
 .fishing-feedback-pointer {
   position: absolute;
-  top: calc(var(--float-y, 65%) - 16px);
+  top: calc(var(--float-y, 65%) - var(--float-clearance));
   left: var(--float-x, 65%);
-  width: 1px;
-  height: 11px;
-  background: #eadcb9;
+  width: 2px;
+  height: 13px;
+  background: #e3d2ae;
 }
 
 .fishing-feedback-card {
   position: absolute;
-  top: calc(var(--float-y, 65%) - 16px);
+  top: calc(var(--float-y, 65%) - var(--float-clearance));
   left: clamp(var(--marker-width), var(--float-x, 65%), calc(100% - var(--marker-width)));
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   width: max-content;
   max-width: min(190px, 70%);
-  padding: 4px 6px;
+  padding: 4px 8px;
   transform: translate(-50%, -100%);
   border: 1px solid #9aaf93;
   border-radius: 1px;
-  background: #1b423a;
+  background: #163731;
+  box-shadow: 2px 2px 0 #0b2522aa;
   color: #f5ecd2;
   font-size: 11px;
   line-height: 1.25;
@@ -35,8 +37,9 @@
 
 .fishing-feedback-card[data-specimen='true'] { --marker-width: 97px; }
 .fishing-feedback-card[data-tension='warning'], .fishing-feedback-card[data-kind='discovery'] { border-color: #dfb875; }
+.fishing-feedback-card[data-kind='landed'], .fishing-feedback-card[data-kind='discovery'] { background: #f4e8c9; color: #21392f; }
 .fishing-feedback-card[data-tension='critical'], .fishing-feedback-card[data-kind='escape'] { border-color: #e6a68e; background: #412f2b; }
 .fishing-feedback-card > span { display: grid; min-width: 0; gap: 2px; }
 .fishing-feedback-card > svg, .fishing-feedback-card > img { flex: 0 0 auto; }
-.fishing-feedback-card > img { object-fit: contain; }
+.fishing-feedback-card > img { object-fit: contain; image-rendering: pixelated; }
 .fishing-feedback-card strong { font-size: 13px; overflow-wrap: anywhere; }

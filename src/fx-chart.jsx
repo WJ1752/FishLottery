@@ -48,12 +48,18 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
   // 后面算比例会变成 NaN，虽然最终会走 empty 分支，但提前算干净更安全。
   const max = visible.length ? Math.max(...visible.map((bar) => bar.high)) : 0
   const min = visible.length ? Math.min(...visible.map((bar) => bar.low)) : 0
-  const span = max - min || Math.max(1, max * 0.02)
+  const padding = max > min ? (max - min) * 0.12 : Math.max(0.02, Math.abs(max) * 0.01)
+  const priceMin = Math.max(0, min - padding)
+  const priceMax = max + padding
+  const span = priceMax - priceMin
+  const priceGuides = [1, 0.5, 0].map((ratio) => priceMin + span * ratio)
   const maxVol = Math.max(...visible.map((bar) => bar.volume), 1)
-  const yOf = (price) => priceH - ((price - min) / span) * (priceH - 10) - 5
+  const yOf = (price) => priceH - ((price - priceMin) / span) * (priceH - 10) - 5
   const slotW = 100 / visible.length
   const bodyW = slotW * 0.62
-  const active = visible.find((bar) => bar.key === hover) || visible[visible.length - 1]
+  const inspected = visible.findIndex((bar) => bar.key === hover)
+  const active = visible[inspected] || visible.at(-1)
+  const inspectionX = inspected >= 0 ? (inspected + 0.5) * slotW : null
 
   // 历史段与预测段之间的分界线：只有落在可见窗口里时才画。
   const splitX = splitIndex > start && splitIndex < start + count ? (splitIndex - start) * slotW : null
@@ -158,27 +164,30 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
         onDoubleClick={reset}
       >
         <svg className="fx-k" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" aria-hidden="true">
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <line key={ratio} x1="0" x2="100" y1={5 + (priceH - 10) * ratio} y2={5 + (priceH - 10) * ratio} className="fx-k-grid" vectorEffect="non-scaling-stroke" />)}
+          {priceGuides.map((price) => <line key={price} x1="0" x2="100" y1={yOf(price)} y2={yOf(price)} className="fx-k-grid" vectorEffect="non-scaling-stroke" />)}
+          <line x1="0" x2="100" y1={height - 27} y2={height - 27} className="fx-k-grid" vectorEffect="non-scaling-stroke" />
+          {inspectionX !== null && <line x1={inspectionX} x2={inspectionX} y1="0" y2={height} className="fx-k-inspection" vectorEffect="non-scaling-stroke" />}
           {visible.map((bar, index) => {
             const center = (index + 0.5) * slotW
-            const up = bar.close >= bar.open
+            const direction = bar.close > bar.open ? 'is-up' : bar.close < bar.open ? 'is-down' : 'is-flat'
             const bodyTop = yOf(Math.max(bar.open, bar.close))
             const bodyBottom = yOf(Math.min(bar.open, bar.close))
             const bodyH = Math.max(0.5, bodyBottom - bodyTop)
             const volH = Math.max(0.6, (bar.volume / maxVol) * 24)
-            return <g key={bar.key} className={cn('fx-k-candle', up ? 'is-up' : 'is-down', hover === bar.key && 'is-active', bar.projected && 'is-projected', bar.running && 'is-running')}>
+            return <g key={bar.key} className={cn('fx-k-candle', direction, hover === bar.key && 'is-active', bar.projected && 'is-projected', bar.running && 'is-running')}>
               <line x1={center} x2={center} y1={yOf(bar.high)} y2={yOf(bar.low)} className="fx-k-wick" vectorEffect="non-scaling-stroke" />
               <rect x={center - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} className="fx-k-body" vectorEffect="non-scaling-stroke" />
-              <rect x={center - bodyW / 2} y={height - volH} width={bodyW} height={volH} className="fx-k-vol" />
+              {bar.volume > 0 && <rect x={center - bodyW / 2} y={height - volH} width={bodyW} height={volH} className="fx-k-vol" />}
             </g>
           })}
           {separator}
         </svg>
       </div>
-      <div className="fx-k-ruler" style={{ '--fx-price-height': `${priceH / height * 100}%` }} aria-hidden="true">
-        {(max === min ? [max] : [max, (max + min) / 2, min]).map((price) => <span key={price}>{fmtPrice(price)}</span>)}
+      <div className="fx-k-ruler" aria-hidden="true">
+        {priceGuides.map((price) => <span key={price} style={{ '--fx-guide-y': `${yOf(price) / height * 100}%` }}>{fmtPrice(price)}</span>)}
       </div>
     </div>
+    {labelOf && visible.length > 1 && <div className="fx-k-time-range" aria-hidden="true"><span>{labelOf(visible[0])}</span><span>{labelOf(visible[visible.length - 1])}</span></div>}
     {splitIndex > 0 && splitIndex < total && <div className="fx-k-split-note"><span className="fx-k-split-dash" />{splitLabel}段<span className="fx-k-split-hint">虚线左侧为已结算历史，右侧为推演</span></div>}
     {active && <div className="fx-k-readout" id={readoutId} aria-live={keyboardActive ? 'polite' : 'off'} aria-atomic={keyboardActive || undefined}>
       <strong>{labelOf ? labelOf(active) : ''}</strong>

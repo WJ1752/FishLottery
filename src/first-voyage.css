@@ -8,6 +8,7 @@
   gap: 4px;
   padding: 10px 12px 9px;
   border: 1px solid var(--line);
+  border-top: 3px solid var(--signal);
   background: var(--surface);
   box-shadow: 3px 4px 0 #183b3580;
 }
@@ -36,10 +37,6 @@
 .first-voyage-species li + li::before { content: '·'; margin-inline-end: 8px; }
 .first-voyage-route-button { min-height: 42px; justify-self: start; }
 
-@media (max-width: 720px) {
-  .first-voyage-slip { top: auto; bottom: 11px; width: 151px; padding: 7px 9px 6px; }
-}
-
-@media (max-width: 720px) and (max-height: 630px) {
-  .first-voyage-slip { top: 13px; bottom: auto; }
+@media (max-width: 760px) {
+  .first-voyage-slip { top: 13px; width: 151px; padding: 7px 9px 6px; }
 }

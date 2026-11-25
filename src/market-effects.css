@@ -64,20 +64,33 @@
 .market-receipt-values {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
+  gap: 9px 12px;
   margin: 10px 0 0;
   padding-top: 9px;
   border-top: 1px dashed var(--market-edge);
 }
 
-.market-receipt-values dt { color: var(--muted); font-size: 11px; }
+.market-receipt-values dt { color: var(--muted); font-size: 12px; }
 .market-receipt-values dd {
   margin: 3px 0 0;
   color: var(--ink);
-  font: 500 12px 'DM Mono', monospace;
+  font: 650 14px var(--font-mono);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.market-receipt-values dd small { color: var(--muted); font: 400 11px system-ui, sans-serif; }
+.market-receipt-values .market-receipt-total {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+  padding-top: 7px;
+  border-top: 1px solid var(--market-edge);
+}
+.market-receipt-values .market-receipt-total dt { color: var(--ink); font-weight: 650; }
+.market-receipt-values .market-receipt-total dd { color: var(--market-tone); font-size: 18px; }
 
 .market-order-confirm {
   display: flex;
