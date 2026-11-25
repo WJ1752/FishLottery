@@ -6,8 +6,9 @@
   margin-bottom: 16px;
   padding: 15px 16px;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 2px;
+  background: var(--surface-2);
 }
 
 .fishing-return > svg { margin-top: 3px; color: var(--accent); }
@@ -16,6 +17,7 @@
 .fishing-return p strong { color: var(--text); }
 .fishing-return-action { align-self: center; min-height: 40px; }
 .fishing-return-dismiss { grid-column: 4; justify-self: end; }
+.page-wrap-fishing .fishing-return { margin-inline: var(--bridge-gutter, 14px); }
 
 @media (max-width: 520px) {
   .fishing-return { grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; padding: 12px; }

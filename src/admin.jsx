@@ -5,7 +5,7 @@ import { TRAIT_EFFECT_TYPES, combinationBiteTable, effectSummary, normalizeTrait
 import { FxCandles, FxFlowBars, FX_GRAINS, decodeCandleRows, fxGrainLabel } from './fx-chart'
 import { api, request } from './api'
 import { StepUpPage, TotpSetupPage } from './auth'
-import { harborArt, itemArt } from './art.js'
+import { itemArt } from './art.js'
 import './admin-ops.css'
 
 const MATERIAL_NAMES = Object.keys(MATERIALS)
@@ -35,17 +35,27 @@ const ADMIN_NAV_GROUPS = [
 ]
 
 function AdminNavigation({ section, onSelect }) {
-  return <nav className="ops-navigation" aria-label="运营模块">
-    {ADMIN_NAV_GROUPS.map(({ label, items }) => <div className="ops-nav-group" key={label}>
-      <h2>{label}</h2>
-      <div className="ops-nav-items">
-        {items.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" className="ops-nav-button" aria-pressed={section === id} onClick={() => onSelect(id)}>
-          <Icon size={17} aria-hidden="true" />
-          <span>{name}</span>
-        </button>)}
-      </div>
-    </div>)}
-  </nav>
+  return <>
+    <nav className="ops-navigation" aria-label="运营模块">
+      {ADMIN_NAV_GROUPS.map(({ label, items }) => <div className="ops-nav-group" key={label}>
+        <h2>{label}</h2>
+        <div className="ops-nav-items">
+          {items.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" className="ops-nav-button" aria-current={section === id ? 'page' : undefined} onClick={() => onSelect(id)}>
+            <Icon size={16} aria-hidden="true" />
+            <span>{name}</span>
+          </button>)}
+        </div>
+      </div>)}
+    </nav>
+    <label className="admin-field ops-mobile-navigation">
+      <span>运营模块</span>
+      <select className="admin-input" value={section} onChange={(event) => onSelect(event.target.value)}>
+        {ADMIN_NAV_GROUPS.map(({ label, items }) => <optgroup key={label} label={label}>
+          {items.map(({ id, label: name }) => <option key={id} value={id}>{name}</option>)}
+        </optgroup>)}
+      </select>
+    </label>
+  </>
 }
 
 const TENSION_FIELDS = [
@@ -1285,7 +1295,7 @@ function MerchantChart({ config, maxTrait, maxCombo }) {
   </div>
 }
 
-export default function AdminPage({ config: savedConfig, configVersion, onConfigSaved }) {
+export default function AdminPage({ config: savedConfig, configVersion, onConfigSaved, onBack }) {
   const [section, setSection] = useState('operations')
   // 草稿模式：所有编辑只写本地 draft，点「保存配置」才提交到服务端并让所有玩家生效。
   const [draft, setDraft] = useState(() => savedConfig)
@@ -1383,7 +1393,9 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
 
   // 2FA 门禁：服务端已经拦了三层（未登录 / 非管理员 / 未绑定或未验证 2FA），
   // 这里按返回的 code 给出对应界面，避免玩家看到一堆 403。
-  if (gate) return gate === 'TOTP_SETUP_REQUIRED' ? <TotpSetupPage onDone={loadOverview} /> : <StepUpPage onDone={loadOverview} />
+  if (gate) return gate === 'TOTP_SETUP_REQUIRED'
+    ? <TotpSetupPage onDone={loadOverview} onCancel={onBack} />
+    : <StepUpPage onDone={loadOverview} onCancel={onBack} />
   if (!overview) return <div className="panel admin-card">
     {loadError ? <>
       <p className="auth-error" role="alert">{loadError}</p>
@@ -1395,7 +1407,7 @@ export default function AdminPage({ config: savedConfig, configVersion, onConfig
   const maintenance = overview.service?.mode === 'maintenance'
   const showingEditor = SECTIONS.some((item) => item.id === section)
   return <div className="ops-console">
-    <header className="ops-heading" style={{ '--ops-harbor': `url("${harborArt}")` }}>
+    <header className="ops-heading">
       <div>
         <h1>运营控制台</h1>
         <p><ShieldCheck size={16} aria-hidden="true" /> {overview.me.username} · 管理员会话</p>
@@ -1491,12 +1503,24 @@ function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) 
   }
 
   return <>
-    <section className="ops-metrics" aria-label="服务概况">
-      <div className="panel ops-metric ops-metric-service" data-state={service.mode}><span><Activity size={15} aria-hidden="true" /> 开放状态</span><strong>{service.mode === 'maintenance' ? '维护中' : '开放'}</strong><small>{service.updatedAt ? serviceTime(service.updatedAt) : '默认开放'}</small></div>
-      <div className="panel ops-metric"><span><Users size={15} aria-hidden="true" /> 玩家账号</span><strong>{overview.stats.players.toLocaleString('zh-CN')}</strong><small>{overview.stats.sessions.toLocaleString('zh-CN')} 个有效会话</small></div>
-      <div className="panel ops-metric"><span><BarChart3 size={15} aria-hidden="true" /> 近 5 分钟 API 请求</span><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></div>
-      <div className="panel ops-metric"><span><TrendingUp size={15} aria-hidden="true" /> 开奖与行情结算</span><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></div>
-    </section>
+    <dl className="ops-metrics" aria-label="服务概况">
+      <div className="ops-metric ops-metric-service" data-state={service.mode}>
+        <dt><Activity size={15} aria-hidden="true" /> 服务状态</dt>
+        <dd><strong>{service.mode === 'maintenance' ? '维护中' : '开放'}</strong><small>{service.updatedAt ? serviceTime(service.updatedAt) : '默认开放'}</small></dd>
+      </div>
+      <div className="ops-metric">
+        <dt><Users size={15} aria-hidden="true" /> 玩家账号</dt>
+        <dd><strong>{overview.stats.players.toLocaleString('zh-CN')}</strong><small>{overview.stats.sessions.toLocaleString('zh-CN')} 个有效会话</small></dd>
+      </div>
+      <div className="ops-metric">
+        <dt><BarChart3 size={15} aria-hidden="true" /> 近 5 分钟 API 请求</dt>
+        <dd><strong>{runtime?.requests.total.toLocaleString('zh-CN') ?? '—'}</strong><small>{runtime ? `${runtime.requests.failed} 个服务错误 · ${runtime.requests.slow} 个慢请求` : '进程指标不可用'}</small></dd>
+      </div>
+      <div className="ops-metric">
+        <dt><TrendingUp size={15} aria-hidden="true" /> 开奖与行情结算</dt>
+        <dd><strong>{job ? (job.failures ? '需检查' : '运行中') : '—'}</strong><small>最近成功 {serviceTime(job?.lastSuccessAt)}</small></dd>
+      </div>
+    </dl>
 
     <div className="ops-control-grid">
       <section className="panel admin-card ops-control">
@@ -1535,17 +1559,14 @@ function OperationsAdmin({ overview, dirty, onConfig, onRefresh, onGateError }) 
     {feedback && <p className={feedback.error ? 'auth-error' : 'auth-notice'} role="status">{feedback.text}</p>}
 
     <SectionHead title="操作记录" count={`最近 ${overview.audit.length} 条`} />
-    <section className="panel admin-card">
-      <div className="admin-table">
-        <div className="admin-table-head admin-audit-head"><span>操作</span><span>账号</span><span>时间</span></div>
-        {overview.audit.map((row) => <div className="admin-table-row admin-audit-row" key={row.id}>
-          <span>{row.action}{row.detail ? ` · ${row.detail}` : ''}</span>
-          <span>{row.username || '—'}</span>
-          <span>{serviceTime(row.at)}</span>
-        </div>)}
-        {!overview.audit.length && <p className="admin-empty-line">暂无操作记录</p>}
-      </div>
-    </section>
+    {overview.audit.length ? <table className="ops-audit" aria-label="近期操作记录">
+      <thead><tr><th scope="col">操作</th><th scope="col">账号</th><th scope="col">时间</th></tr></thead>
+      <tbody>{overview.audit.map((row) => <tr key={row.id}>
+        <td>{row.action}{row.detail ? ` · ${row.detail}` : ''}</td>
+        <td>{row.username || '—'}</td>
+        <td>{serviceTime(row.at)}</td>
+      </tr>)}</tbody>
+    </table> : <p className="admin-empty-line">暂无操作记录</p>}
   </>
 }
 
@@ -1612,8 +1633,8 @@ function UsersAdmin({ overview, me, onRefresh, onGateError }) {
         {page.users.map((item) => <div className="admin-user-row" key={item.id}>
           <div>
             <strong>{item.username}{item.id === me.id ? '（我）' : ''}{item.disabled ? ' · 已停用' : ''}</strong>
-            <small>{item.role === 'admin' ? '管理员' : '玩家'} · {item.totpEnabled ? '2FA 已启用' : '2FA 未启用'} · {item.emailVerified ? `邮箱 ${item.email}` : '邮箱未验证'} · 注册 {new Date(item.createdAt).toLocaleDateString('zh-CN')}</small>
-            <small className="admin-user-stats">鱼币 {Number(item.coins || 0).toLocaleString('zh-CN')} · 未刮刮刮乐 {item.scratchCards || 0} 张 · 空白彩票 {item.blankTickets || 0} 张</small>
+            <small>{item.totpEnabled ? '两步验证已启用' : '两步验证未启用'} · {item.emailVerified ? `邮箱 ${item.email}` : '邮箱未验证'} · 注册 {new Date(item.createdAt).toLocaleDateString('zh-CN')}</small>
+            <small className="admin-user-stats">鱼币 {Number(item.coins || 0).toLocaleString('zh-CN')} · 未刮卡 {item.scratchCards || 0} 张 · 空白彩票 {item.blankTickets || 0} 张</small>
           </div>
           <StatusPill tone={item.role === 'admin' ? 'warning' : 'neutral'}>{item.role === 'admin' ? '管理员' : '玩家'}</StatusPill>
           <div className="auth-actions">

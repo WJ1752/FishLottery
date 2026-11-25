@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from 'lucide-react'
 
 // 深海FX 图表渲染层（只画，不算）。
@@ -21,9 +21,11 @@ export const clampNum = (value, min, max) => Math.min(max, Math.max(min, Number(
 // Alt+滚轮缩放、拖动平移，也可用按钮操作。
 export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitIndex = -1, splitLabel = '预测' }) {
   const wrapRef = useRef(null)
+  const readoutId = useId()
   const [view, setView] = useState({ start: 0, count: 0 })
   const [hover, setHover] = useState(null)
   const [drag, setDrag] = useState(null)
+  const [keyboardActive, setKeyboardActive] = useState(false)
   const total = bars.length
 
   useEffect(() => {
@@ -84,16 +86,34 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
   }, [total])
 
   const onPointerDown = (event) => {
+    if (event.button !== 0) return
+    inspectAt(event.clientX)
     setDrag({ x: event.clientX, start })
     event.currentTarget.setPointerCapture?.(event.pointerId)
   }
   const onPointerMove = (event) => {
-    if (drag) {
-      const rect = wrapRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const moved = Math.round(((drag.x - event.clientX) / rect.width) * count)
-      setView({ start: clampNum(drag.start + moved, 0, Math.max(0, total - count)), count })
-    }
+    if (!drag) { inspectAt(event.clientX); return }
+    const rect = wrapRef.current?.getBoundingClientRect()
+    if (!rect?.width) return
+    const moved = Math.round(((drag.x - event.clientX) / rect.width) * count)
+    if (!moved) return
+    setHover(null)
+    setView({ start: clampNum(drag.start + moved, 0, Math.max(0, total - count)), count })
+  }
+  function inspectAt(clientX) {
+    const rect = wrapRef.current?.getBoundingClientRect()
+    if (!rect?.width || !visible.length) return
+    const index = clampNum(Math.floor((clientX - rect.left) / rect.width * visible.length), 0, visible.length - 1)
+    setHover(visible[index].key)
+  }
+  const inspectByKey = (event) => {
+    const direction = { ArrowLeft: -1, ArrowRight: 1 }[event.key]
+    if (!direction) return
+    event.preventDefault()
+    setKeyboardActive(true)
+    const index = visible.findIndex((bar) => bar.key === active?.key)
+    const next = visible[clampNum(index + direction, 0, visible.length - 1)]
+    if (next) setHover(next.key)
   }
   const onPointerUp = () => setDrag(null)
   const reset = () => {
@@ -110,7 +130,7 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
     setView({ count: nextCount, start: clampNum(start + count - nextCount, 0, total - nextCount) })
   }
 
-  if (empty) return <p className="fx-k-empty">无数据</p>
+  if (empty) return <p className="fx-k-empty">暂无 K 线数据</p>
 
   return <>
     <div className="fx-chart-controls" role="group" aria-label="K 线图控制">
@@ -120,40 +140,47 @@ export function FxCandles({ bars, height = 200, labelOf, defaultZoom = 1, splitI
       <button className="icon-button" onClick={() => zoomBy(1.4)} disabled={count >= total} aria-label="缩小图表" title="缩小图表"><Minus size={16} /></button>
       <button className="icon-button" onClick={reset} aria-label="返回最新行情" title="返回最新行情"><RotateCcw size={15} /></button>
     </div>
-    <div
-      ref={wrapRef}
-      className={cn('fx-k-wrap', drag && 'is-dragging')}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onPointerLeave={() => { setDrag(null); setHover(null) }}
-      onDoubleClick={reset}
-    >
-      <svg className="fx-k" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" role="img" aria-label="K 线图">
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <line key={ratio} x1="0" x2="100" y1={5 + (priceH - 10) * ratio} y2={5 + (priceH - 10) * ratio} className="fx-k-grid" vectorEffect="non-scaling-stroke" />)}
-        {visible.map((bar, index) => {
-          const center = (index + 0.5) * slotW
-          const up = bar.close >= bar.open
-          const bodyTop = yOf(Math.max(bar.open, bar.close))
-          const bodyBottom = yOf(Math.min(bar.open, bar.close))
-          const bodyH = Math.max(0.5, bodyBottom - bodyTop)
-          const volH = Math.max(0.6, (bar.volume / maxVol) * 24)
-          return <g key={bar.key} className={cn('fx-k-candle', up ? 'is-up' : 'is-down', hover === bar.key && 'is-active', bar.projected && 'is-projected', bar.running && 'is-running')} onMouseEnter={() => setHover(bar.key)}>
-            <line x1={center} x2={center} y1={yOf(bar.high)} y2={yOf(bar.low)} className="fx-k-wick" vectorEffect="non-scaling-stroke" />
-            <rect x={center - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} className="fx-k-body" vectorEffect="non-scaling-stroke" />
-            <rect x={center - bodyW / 2} y={height - volH} width={bodyW} height={volH} className="fx-k-vol" />
-          </g>
-        })}
-        {separator}
-      </svg>
-    </div>
-    <div className="fx-k-axis">
-      <span>{fmtPrice(max)}</span>
-      <span>{fmtPrice(min)}</span>
+    <div className="fx-k-plot">
+      <div
+        ref={wrapRef}
+        className={cn('fx-k-wrap', drag && 'is-dragging')}
+        role="group"
+        tabIndex={0}
+        aria-label="K 线图，按左右方向键查看价格"
+        aria-describedby={readoutId}
+        onKeyDown={inspectByKey}
+        onBlur={() => setKeyboardActive(false)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onPointerLeave={() => { setDrag(null); setHover(null) }}
+        onDoubleClick={reset}
+      >
+        <svg className="fx-k" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" aria-hidden="true">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <line key={ratio} x1="0" x2="100" y1={5 + (priceH - 10) * ratio} y2={5 + (priceH - 10) * ratio} className="fx-k-grid" vectorEffect="non-scaling-stroke" />)}
+          {visible.map((bar, index) => {
+            const center = (index + 0.5) * slotW
+            const up = bar.close >= bar.open
+            const bodyTop = yOf(Math.max(bar.open, bar.close))
+            const bodyBottom = yOf(Math.min(bar.open, bar.close))
+            const bodyH = Math.max(0.5, bodyBottom - bodyTop)
+            const volH = Math.max(0.6, (bar.volume / maxVol) * 24)
+            return <g key={bar.key} className={cn('fx-k-candle', up ? 'is-up' : 'is-down', hover === bar.key && 'is-active', bar.projected && 'is-projected', bar.running && 'is-running')}>
+              <line x1={center} x2={center} y1={yOf(bar.high)} y2={yOf(bar.low)} className="fx-k-wick" vectorEffect="non-scaling-stroke" />
+              <rect x={center - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} className="fx-k-body" vectorEffect="non-scaling-stroke" />
+              <rect x={center - bodyW / 2} y={height - volH} width={bodyW} height={volH} className="fx-k-vol" />
+            </g>
+          })}
+          {separator}
+        </svg>
+      </div>
+      <div className="fx-k-ruler" style={{ '--fx-price-height': `${priceH / height * 100}%` }} aria-hidden="true">
+        {(max === min ? [max] : [max, (max + min) / 2, min]).map((price) => <span key={price}>{fmtPrice(price)}</span>)}
+      </div>
     </div>
     {splitIndex > 0 && splitIndex < total && <div className="fx-k-split-note"><span className="fx-k-split-dash" />{splitLabel}段<span className="fx-k-split-hint">虚线左侧为已结算历史，右侧为推演</span></div>}
-    {active && <div className="fx-k-readout">
+    {active && <div className="fx-k-readout" id={readoutId} aria-live={keyboardActive ? 'polite' : 'off'} aria-atomic={keyboardActive || undefined}>
       <strong>{labelOf ? labelOf(active) : ''}</strong>
       <span>开 <b>{fmtPrice(active.open)}</b></span>
       <span>高 <b className="is-up">{fmtPrice(active.high)}</b></span>

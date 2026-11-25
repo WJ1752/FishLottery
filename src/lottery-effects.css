@@ -11,10 +11,9 @@
   gap: 4px;
   padding: 3px 6px;
   border: 1px solid var(--accent-line);
-  border-radius: 6px;
+  border-radius: 2px;
   color: var(--accent);
   background: var(--surface-2);
-  box-shadow: var(--shadow);
   pointer-events: none;
   animation: lottery-print-slip 820ms both;
 }
@@ -30,7 +29,7 @@
   width: 19px;
   height: 19px;
   border: 1px solid var(--accent-line);
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--success-soft);
   animation: lottery-print-seal 240ms 150ms both;
 }
@@ -76,7 +75,7 @@
   margin: 16px 0 18px;
   padding: 14px 10px;
   border-block: 1px dashed var(--accent-line);
-  background: linear-gradient(180deg, var(--surface), var(--success-soft));
+  background: var(--surface-2);
   list-style: none;
 }
 
@@ -86,10 +85,9 @@
   width: clamp(31px, 9vw, 40px);
   aspect-ratio: 1;
   border: 1px solid var(--accent-line);
-  border-radius: 50%;
+  border-radius: 2px;
   color: var(--text);
   background: var(--surface-2);
-  box-shadow: inset 0 -3px 0 var(--success-soft);
   font: 600 .9rem 'DM Mono', monospace;
   animation: lottery-reveal-number 330ms var(--lottery-reveal-delay) cubic-bezier(.2, .72, .3, 1) both;
 }

@@ -108,25 +108,22 @@ export function useFishingFeedback(state, { active, snapshotAt, suppress = false
   return active && !suppress ? event : null
 }
 
-export function FishingFeedback({ event, reeling, tensionLevel }) {
+export function FishingFeedback({ event, running, reeling, tensionLevel }) {
   const card = event && presentation[event.kind]
   const discovery = event?.kind === 'discovery'
   const fishName = event?.fish?.name
   const otherSpecies = event?.others ? ` · 另 ${event.others} 种` : ''
   return <>
-    {(reeling || event) && <div className="fishing-feedback" aria-hidden="true">
-      <div className="fishing-feedback-water" data-tension={tensionLevel}>
-        {reeling && <span className="fishing-feedback-line" />}
-        {event && <span className="fishing-feedback-ripples" data-kind={event.kind} key={event.id}><i /><i /><i /></span>}
-      </div>
-      {card && <div className="fishing-feedback-card" data-kind={event.kind} data-rarity={event.fish?.rarity} key={`${event.kind}-${event.id}`}>
-        {discovery ? <span className="fishing-feedback-portrait"><img src={fishArt(event.fish)} alt="" width="52" height="43" decoding="async" /></span> : <card.Icon size={20} />}
+    {(running || event) && <div className="fishing-feedback" aria-hidden="true">
+      <span className="fishing-feedback-pointer" />
+      <div className="fishing-feedback-card" data-kind={event?.kind} data-tension={tensionLevel} data-specimen={Boolean(fishName)}>
+        {discovery ? <img src={fishArt(event.fish)} alt="" width="34" height="30" decoding="async" /> : card && <card.Icon size={14} />}
         <span>
-          <span className="fishing-feedback-label">{card.label}</span>
+          <span>{card?.label || (reeling ? '鱼线绷紧' : '等待咬钩')}</span>
           {fishName && <strong>{fishName}{otherSpecies}</strong>}
         </span>
-      </div>}
+      </div>
     </div>}
-    <div className="fishing-feedback-announcement" role="status">{discovery ? `${card.label}：${fishName}${otherSpecies}` : ''}</div>
+    <div className="sr-only" role="status">{card ? `${card.label}${fishName ? ` · ${fishName}${otherSpecies}` : ''}` : ''}</div>
   </>
 }

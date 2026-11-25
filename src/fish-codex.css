@@ -1,139 +1,46 @@
 .fish-codex {
-  margin-bottom: 1.4rem;
-  padding: clamp(14px, 2.8vw, 25px);
+  margin-bottom: 20px;
+  padding: 15px clamp(12px, 2.3vw, 24px) 19px;
+  border-radius: 2px;
   color: var(--text);
+  background: var(--surface);
 }
 
 .fish-codex-heading {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px 24px;
-  margin-bottom: 15px;
-}
-
-.fish-codex-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  margin: 0;
-  font-size: 18px;
-}
-
-.fish-codex-heading p,
-.fish-codex-record p {
-  margin: .35rem 0 0;
-  color: var(--muted);
-  line-height: 1.5;
-  font-size: .78rem;
-}
-
-.fish-codex-progress {
-  display: grid;
-  align-self: center;
-  gap: 5px;
-  min-width: 125px;
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.fish-codex-progress strong { color: var(--ink); }
-.fish-codex-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
-
-.fish-codex-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: baseline;
+  gap: 12px 24px;
   margin-bottom: 13px;
 }
 
-.fish-codex-filters button {
-  min-height: 34px;
-  padding: 4px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-inset);
-  color: var(--muted);
-  font-size: 12px;
-}
+.fish-codex-heading h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 18px; }
+.fish-codex-progress { display: grid; gap: 5px; min-width: 124px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.fish-codex-progress strong { color: var(--ink); }
+.fish-codex-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
 
-.fish-codex-filters button[aria-pressed='true'] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
-.fish-codex-filters button span { margin-inline-start: 3px; font-variant-numeric: tabular-nums; }
-.fish-codex-empty { padding: 15px 0 4px; color: var(--muted); font-size: 13px; }
+.fish-codex-filters { display: flex; flex-wrap: wrap; gap: 13px; border-bottom: 1px solid var(--line-strong); }
+.fish-codex-filters button { min-height: 39px; padding: 5px 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; }
+.fish-codex-filters button[aria-pressed='true'] { border-color: var(--danger); color: var(--ink); font-weight: 700; }
+.fish-codex-filters button span { margin-inline-start: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fish-codex-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 
-.fish-codex-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
-  grid-auto-rows: 1fr;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
+.fish-codex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); column-gap: 22px; margin: 0; padding: 0; list-style: none; }
 .fish-codex-card {
+  display: grid;
+  grid-template-columns: minmax(71px, 93px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-inset);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
 }
+.fish-codex-plate { position: relative; display: grid; place-items: center; aspect-ratio: 1.6; background: var(--surface-2); }
+.fish-codex-plate img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.fish-codex-check { position: absolute; right: -1px; bottom: -1px; display: grid; place-items: center; width: 21px; height: 21px; border: 1px solid var(--success-line); background: var(--surface); color: var(--success); }
 
-.fish-codex-plate {
-  position: relative;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-bottom: 1px solid var(--line-soft);
-  background: radial-gradient(ellipse at 50% 46%, #3a5664, #1a2a3a 76%);
-  min-height: 6rem;
-  aspect-ratio: 2 / 1;
-}
-
-.fish-codex-plate img {
-  position: relative;
-  display: block;
-  width: min(100%, 9.5rem);
-  height: 100%;
-  max-height: 7rem;
-  object-fit: contain;
-}
-
-.fish-codex-check {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  display: grid;
-  width: 25px;
-  height: 25px;
-  place-items: center;
-  border: 1px solid #6c9f93;
-  border-radius: 50%;
-  background: #1a383e;
-  color: #a4f2d7;
-}
-
-.fish-codex-record {
-  padding: 10px 11px 12px;
-}
-
-.fish-codex-record h3 {
-  margin: 0;
-  font-size: .88rem;
-}
-
-.fish-codex-record span {
-  display: block;
-  margin-top: .45rem;
-  color: var(--muted);
-  font-size: .74rem;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 550px) {
-  .fish-codex-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
+.fish-codex-record h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.fish-codex-record p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.fish-codex-record .fish-codex-latin { font-style: italic; }
+.fish-codex-record span { font-variant-numeric: tabular-nums; }

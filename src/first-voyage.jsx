@@ -1,5 +1,5 @@
 import React, { memo } from 'react'
-import { ArrowRight, Check, ClipboardList, Compass, Fish, Unlock } from 'lucide-react'
+import { ArrowRight, Check, ChevronRight, Fish, Unlock } from 'lucide-react'
 import { DEPTHS, canUnlockDepth, depthSurvey, depthUnlockCost, guideRodUpgradeCount, rodConfigFor } from './game.js'
 import { fishPoolFor } from './traits.js'
 import './first-voyage.css'
@@ -8,9 +8,9 @@ const FIRST_SURVEY_DEPTH = DEPTHS.find((depth) => depth.unlock)?.id
 
 export function firstVoyageSteps(state) {
   return [
-    { id: 'catch', title: '钓到第一条鱼', complete: state.stats?.totalCatches > 0 },
-    { id: 'sell', title: '兑换一次鱼获', complete: state.stats?.totalSold > 0 },
-    { id: 'upgrade', title: '强化一次钓竿', complete: guideRodUpgradeCount(state) > 0 },
+    { id: 'catch', title: '首次钓获', complete: state.stats?.totalCatches > 0 },
+    { id: 'sell', title: '首次商会兑换', complete: state.stats?.totalSold > 0 },
+    { id: 'upgrade', title: '首次强化', complete: guideRodUpgradeCount(state) > 0 },
   ]
 }
 
@@ -21,35 +21,26 @@ export function showFirstVoyage(steps, nextDepth, guideEnabled) {
 export const FirstVoyageContract = memo(function FirstVoyageContract({ steps, running, merchantAvailable, canStart, onToggle, onOpenMerchant, onOpenDrawer }) {
   const current = steps.find(({ complete }) => !complete)?.id
   const actions = {
-    catch: {
-      hint: running ? '等待鱼获入库，回来就能看到这一步完成。' : '开始垂钓，第一条鱼入库后即可带去兑换。',
-      label: running ? null : '开始垂钓',
-      onClick: onToggle,
-      disabled: !canStart,
-    },
-    sell: {
-      hint: merchantAvailable ? '把鱼获交给潮汐商会，换取票券和材料。' : '继续垂钓，等潮汐商会开放后就能兑换。',
-      label: merchantAvailable ? '去潮汐商会' : null,
-      onClick: onOpenMerchant,
-    },
-    upgrade: { hint: '选择一项可用的强化，为下一片海域做准备。', label: '去强化钓竿', onClick: onOpenDrawer },
+    catch: !running && { label: '首次钓获，开始垂钓', onClick: onToggle, disabled: !canStart },
+    sell: merchantAvailable && { label: '首次商会兑换，前往潮汐商会', onClick: onOpenMerchant },
+    upgrade: { label: '首次强化，打开钓竿与强化', onClick: onOpenDrawer },
   }
-  const action = actions[current]
-  return <section className="panel first-voyage-panel" aria-labelledby="first-voyage-title">
+  return <section className="first-voyage-slip" aria-labelledby="first-voyage-title">
     <header className="first-voyage-head">
-      <h2 id="first-voyage-title"><ClipboardList size={18} aria-hidden="true" />首航委托</h2>
-      {current ? <span>完成 {steps.filter(({ complete }) => complete).length} / {steps.length}</span> : <span className="first-voyage-complete"><Check size={15} aria-hidden="true" />首航完成</span>}
+      <h2 id="first-voyage-title">首航委托</h2>
+      <span>{steps.filter(({ complete }) => complete).length} / {steps.length}</span>
     </header>
     <ol className="first-voyage-checkpoints">
-      {steps.map(({ id, title, complete }, index) => <li key={id} data-complete={complete} aria-current={id === current ? 'step' : undefined}>
-        <span className="first-voyage-step-mark" aria-hidden="true">{complete ? <Check size={13} /> : index + 1}</span>
-        <span>{title}{complete && <span className="sr-only">，已完成</span>}</span>
-      </li>)}
+      {steps.map(({ id, title, complete }) => {
+        const action = current === id && actions[id]
+        return <li key={id} data-complete={complete} aria-current={id === current ? 'step' : undefined}>
+          <span className="first-voyage-step-mark" aria-hidden="true">{complete ? <Check size={13} /> : id === current ? <ChevronRight size={13} /> : '·'}</span>
+          {action
+            ? <button type="button" aria-label={action.label} disabled={action.disabled} onClick={action.onClick}>{title}<ArrowRight size={12} aria-hidden="true" /></button>
+            : <span>{title}{complete && <span className="sr-only">，已完成</span>}</span>}
+        </li>
+      })}
     </ol>
-    {action && <div className="first-voyage-action">
-      <p>{action.hint}</p>
-      {action.label && <button type="button" className="primary-button" disabled={action.disabled} onClick={action.onClick}>{action.label}<ArrowRight size={15} aria-hidden="true" /></button>}
-    </div>}
   </section>
 })
 
@@ -63,11 +54,7 @@ export const NextVoyage = memo(function NextVoyage({ state, depth, busy, canStar
   const earnsRod = surveyRod && !state.rods?.some((rod) => rodConfigFor(state.config, rod).id === surveyRod.id)
   const owned = price ? state.inventory?.[price.material] || 0 : 0
   const coins = state.coins || 0
-  return <section className="panel first-voyage-panel first-voyage-route" aria-labelledby="next-voyage-title">
-    <header className="first-voyage-head">
-      <h2 id="next-voyage-title"><Compass size={18} aria-hidden="true" />下一站 · {depth.label}</h2>
-      <span>{depth.riskLabel}</span>
-    </header>
+  return <section className="first-voyage-route" aria-label={`${depth.label}调查与物资`}>
     {survey && source && <div className="first-voyage-survey">
       <div>
         <span>{survey.rewarded ? `${source.label}调查已完成` : `在${source.label}钓获 ${survey.target} 条鱼`}</span>

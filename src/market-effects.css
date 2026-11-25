@@ -10,14 +10,11 @@
   --market-tone: var(--success);
   --market-tint: var(--success-soft);
   --market-edge: var(--success-line);
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
   margin-top: 12px;
   padding: 11px 12px;
   border: 1px solid var(--market-edge);
   border-inline-start: 2px solid var(--market-tone);
-  border-radius: 8px;
+  border-radius: 2px;
   background: var(--market-tint);
 }
 
@@ -31,16 +28,6 @@
   --market-tone: var(--muted);
   --market-tint: var(--surface-2);
   --market-edge: var(--line-strong);
-}
-
-.market-confirm::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  pointer-events: none;
-  content: '';
-  background: linear-gradient(104deg, transparent 20%, color-mix(in srgb, var(--market-tone) 12%, transparent) 50%, transparent 80%);
-  animation: market-confirm-sweep .48s ease-out both;
 }
 
 .market-confirm-heading {
@@ -59,7 +46,7 @@
   height: 25px;
   place-items: center;
   border: 1px solid var(--market-edge);
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--surface);
   color: var(--market-tone);
   animation: market-confirm-stamp .24s ease-out both;
@@ -80,7 +67,7 @@
   gap: 8px 12px;
   margin: 10px 0 0;
   padding-top: 9px;
-  border-top: 1px solid var(--market-edge);
+  border-top: 1px dashed var(--market-edge);
 }
 
 .market-receipt-values dt { color: var(--muted); font-size: 11px; }
@@ -102,17 +89,11 @@
 
 .market-order-confirm > span { color: var(--muted); font-size: 11px; }
 
-@keyframes market-confirm-sweep {
-  from { transform: translateX(-65%); opacity: 1; }
-  to { transform: translateX(65%); opacity: 0; }
-}
-
 @keyframes market-confirm-stamp {
   from { transform: scale(.82); opacity: .55; }
   to { transform: scale(1); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .market-confirm::before { display: none; }
   .market-confirm-mark { animation: none; }
 }

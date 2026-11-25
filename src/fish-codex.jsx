@@ -29,10 +29,7 @@ export default function FishCodex({ state }) {
 
   return <section className="panel fish-codex" aria-label="鱼类图鉴">
     <header className="fish-codex-heading">
-      <div>
-        <h2><BookOpen size={18} aria-hidden="true" /> 鱼类图鉴</h2>
-        <p>查看鱼种栖息的海域，亲手钓获后即可登记。</p>
-      </div>
+      <h2><BookOpen size={18} aria-hidden="true" /> 鱼类图鉴</h2>
       <div className="fish-codex-progress">
         <span>已登记 <strong>{discovered}</strong> / {species.length}</span>
         <progress value={discovered} max={species.length} aria-label="鱼类图鉴登记进度" />
@@ -54,8 +51,8 @@ export default function FishCodex({ state }) {
           </div>
           <div className="fish-codex-record">
             <h3>{fish.name}</h3>
-            <p>{fish.waters.join(' · ')}</p>
-            <span>{count > 0 ? `已钓获 ${count.toLocaleString('zh-CN')} 次` : '待登记'}</span>
+            <p className="fish-codex-latin" lang="la">{fish.latin}</p>
+            <p>{fish.waters.join(' · ')}<span>{count > 0 ? ` · 已钓获 ${count.toLocaleString('zh-CN')} 次` : ' · 待登记'}</span></p>
           </div>
         </li>
       })}

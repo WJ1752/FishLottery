@@ -38,10 +38,10 @@ export function FishingReturn({ report, onDismiss, onWarehouse, onRod }) {
   return <section className="fishing-return" aria-label="离线收获">
     <Anchor size={21} aria-hidden="true" />
     <div className="fishing-return-summary">
-      <h2>欢迎回港</h2>
+      <h2>回港记录</h2>
       <p>离开 {formatDuration(report.elapsedMs)}，鱼获入库 <strong>{report.landed.toLocaleString('zh-CN')} 条</strong>{report.escaped > 0 && `，脱钩 ${report.escaped.toLocaleString('zh-CN')} 条`}。</p>
       {reason && <p>{reason}</p>}
-      {report.cappedMs !== null && <p>{report.cappedMs ? `已按 ${formatDuration(report.cappedMs)} 的离线时长上限补算。` : '本次未补算离线时长。'}</p>}
+      {report.cappedMs != null && <p>{report.cappedMs ? `离线结算上限 ${formatDuration(report.cappedMs)}。` : '本次未补算离线时长。'}</p>}
     </div>
     {reason && <button type="button" className="secondary-button fishing-return-action" onClick={report.stopReason === 'warehouse' ? onWarehouse : onRod}>
       {report.stopReason === 'warehouse' ? '查看仓库' : '查看钓竿'}<ArrowRight size={15} aria-hidden="true" />
